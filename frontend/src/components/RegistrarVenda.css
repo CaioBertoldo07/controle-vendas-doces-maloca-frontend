@@ -1,0 +1,180 @@
+.form-row {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+
+.sabores-section {
+    margin: 2rem 0;
+    padding: 1.5rem;
+    background: var(--bg-primary);
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+}
+
+.sabores-section h3 {
+    color: var(--laranja-maloca);
+    margin-bottom: 1.5rem;
+    font-size: 1.3rem;
+}
+
+.sabores-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+}
+
+.sabor-item {
+    background: var(--bg-secondary);
+    border: 2px solid var(--border-color);
+    border-radius: 10px;
+    padding: 1rem;
+    transition: all 0.3s ease;
+}
+
+.sabor-item:hover {
+    border-color: var(--laranja-maloca);
+    transform: translateY(-2px);
+}
+
+.sabor-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.8rem;
+}
+
+.sabor-nome {
+    font-weight: 600;
+    color: var(--text-primary);
+    font-size: 0.95rem;
+}
+
+.sabor-preco {
+    color: var(--laranja-maloca);
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+.sabor-input {
+    width: 100%;
+    padding: 0.7rem;
+    background: var(--bg-primary);
+    border: 2px solid var(--border-color);
+    border-radius: 8px;
+    color: var(--text-primary);
+    font-size: 1rem;
+    text-align: center;
+    font-weight: 600;
+    transition: all 0.3s ease;
+}
+
+.sabor-input:focus {
+    outline: none;
+    border-color: var(--laranja-maloca);
+    box-shadow: 0 0 0 3px rgba(255, 122, 0, 0.1);
+}
+
+.sabor-input:not(:placeholder-shown) {
+    border-color: var(--laranja-maloca);
+    background: var(--bg-card);
+}
+
+.resumo-venda {
+    background: var(--bg-primary);
+    border: 2px solid var(--laranja-maloca);
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin: 2rem 0;
+}
+
+.resumo-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.8rem 0;
+    font-size: 1.1rem;
+}
+
+.resumo-item:not(:last-child) {
+    border-bottom: 1px solid var(--border-color);
+}
+
+.resumo-item span {
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.resumo-item strong {
+    color: var(--laranja-maloca);
+    font-size: 1.5rem;
+    font-family: 'Poppins', sans-serif;
+}
+
+.resumo-item.valor-total {
+    margin-top: 0.5rem;
+    padding-top: 1rem;
+}
+
+.valor-input-group {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.currency {
+    color: var(--laranja-maloca);
+    font-weight: 600;
+    font-size: 1.3rem;
+}
+
+.valor-input {
+    width: 150px;
+    padding: 0.6rem;
+    background: var(--bg-secondary);
+    border: 2px solid var(--laranja-maloca);
+    border-radius: 8px;
+    color: var(--laranja-maloca);
+    font-size: 1.3rem;
+    font-weight: 700;
+    text-align: right;
+    font-family: 'Poppins', sans-serif;
+}
+
+.valor-input:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(255, 122, 0, 0.2);
+}
+
+.btn-recalcular {
+    background: var(--bg-secondary);
+    border: 2px solid var(--laranja-maloca);
+    color: var(--laranja-maloca);
+    padding: 0.5rem 0.8rem;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 1.2rem;
+    transition: all 0.3s ease;
+}
+
+.btn-recalcular:hover {
+    background: var(--laranja-maloca);
+    color: white;
+    transform: rotate(180deg);
+}
+
+@media (max-width: 768px) {
+    .form-row {
+        grid-template-columns: 1fr;
+    }
+
+    .sabores-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .valor-input {
+        width: 120px;
+        font-size: 1.1rem;
+    }
+}

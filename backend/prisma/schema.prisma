@@ -1,0 +1,63 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model Usuario {
+  id       Int      @id @default(autoincrement())
+  nome     String   @db.VarChar(100)
+  email    String   @unique @db.VarChar(100)
+  senha    String   @db.VarChar(255)
+  criadoEm DateTime @default(now())
+
+  @@map("usuarios")
+}
+
+model Cliente {
+  id     Int     @id @default(autoincrement())
+  nome   String  @db.VarChar(100)
+  vendas Venda[]
+
+  @@map("clientes")
+}
+
+model Sabor {
+  id            Int          @id @default(autoincrement())
+  nome          String       @db.VarChar(50)
+  precoUnitario Decimal      @db.Decimal(10, 2)
+  ativo         Boolean      @default(true)
+  vendaSabores  VendaSabor[]
+
+  @@map("sabores")
+}
+
+model Venda {
+  id         Int          @id @default(autoincrement())
+  quantidade Int
+  valor      Decimal      @db.Decimal(10, 2)
+  data       DateTime     @default(now())
+  clienteId  Int
+  cliente    Cliente      @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  sabores    VendaSabor[]
+
+  @@index([clienteId])
+  @@index([data])
+  @@map("vendas")
+}
+
+model VendaSabor {
+  id         Int     @id @default(autoincrement())
+  vendaId    Int
+  saborId    Int
+  quantidade Int
+  venda      Venda   @relation(fields: [vendaId], references: [id], onDelete: Cascade)
+  sabor      Sabor   @relation(fields: [saborId], references: [id])
+
+  @@index([vendaId])
+  @@index([saborId])
+  @@map("venda_sabores")
+}
