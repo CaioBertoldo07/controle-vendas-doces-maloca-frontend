@@ -4,7 +4,6 @@ const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || "http://localhost:3000/api",
 });
 
-// Interceptor para adicionar token
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem("token");
   if (token) {
@@ -14,7 +13,6 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Interceptor para tratar erros de autenticação
 api.interceptors.response.use(
   (response) => {
     console.log("📥 Response:", response.config.url, response.status);
@@ -24,33 +22,23 @@ api.interceptors.response.use(
     console.error(
       "❌ Erro na resposta:",
       error.response?.status,
-      error.response?.data
+      error.response?.data,
     );
-
     if (error.response?.status === 401) {
       localStorage.removeItem("token");
-      // Só redireciona se não estiver na página de login
       if (!window.location.pathname.includes("/login")) {
         window.location.href = "/login";
       }
     }
     return Promise.reject(error);
-  }
+  },
 );
 
 export const authAPI = {
-  login: (email, senha) => {
-    console.log("🔐 API: Fazendo login");
-    return api.post("/auth/login", { email, senha });
-  },
-  registro: (nome, email, senha) => {
-    console.log("✨ API: Criando conta");
-    return api.post("/auth/registro", { nome, email, senha });
-  },
-  verificar: () => {
-    console.log("🔍 API: Verificando token");
-    return api.get("/auth/verificar");
-  },
+  login: (email, senha) => api.post("/auth/login", { email, senha }),
+  registro: (nome, email, senha) =>
+    api.post("/auth/registro", { nome, email, senha }),
+  verificar: () => api.get("/auth/verificar"),
 };
 
 export const clientesAPI = {
@@ -65,7 +53,12 @@ export const clientesAPI = {
 };
 
 export const saboresAPI = {
-  listar: () => api.get("/sabores"),
+  listar: (todos = false) =>
+    api.get("/sabores", { params: todos ? { todos: true } : {} }),
+  buscar: (id) => api.get(`/sabores/${id}`),
+  criar: (nome, precoUnitario) => api.post("/sabores", { nome, precoUnitario }),
+  atualizar: (id, dados) => api.put(`/sabores/${id}`, dados),
+  deletar: (id) => api.delete(`/sabores/${id}`),
 };
 
 export const vendasAPI = {
