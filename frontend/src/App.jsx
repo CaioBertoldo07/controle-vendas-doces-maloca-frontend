@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
+import PWABanner from './components/PWABanner';
 import './App.css';
 
 function PrivateRoute({ children }) {
@@ -68,6 +69,8 @@ function App() {
     <ThemeProvider>
       <AuthProvider>
         <BrowserRouter>
+          {/* Banner PWA global: offline, atualização e instalação */}
+          <PWABanner />
           <Routes>
             <Route
               path="/login"

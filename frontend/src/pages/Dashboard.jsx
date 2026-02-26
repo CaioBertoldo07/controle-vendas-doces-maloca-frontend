@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import RegistrarVenda from '../components/RegistrarVenda';
 import Relatorios from '../components/Relatorios';
@@ -10,6 +10,17 @@ import ThemeToggle from '../components/ThemeToggle';
 function Dashboard() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const { usuario, logout } = useAuth();
+
+  // Suporte aos shortcuts do PWA via URL params
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const tab = params.get('tab')
+    if (tab) {
+      setActiveTab(tab)
+      // Limpar o param da URL sem recarregar
+      window.history.replaceState({}, '', '/')
+    }
+  }, [])
 
   return (
     <div className="app">

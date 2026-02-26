@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- Fundo arredondado -->
+  <rect width="128" height="128" rx="28.16" fill="#1A1A1A"/>
+  <!-- Círculo laranja gradiente -->
+  <defs>
+    <radialGradient id="grad" cx="40%" cy="35%" r="60%">
+      <stop offset="0%" stop-color="#FFB347"/>
+      <stop offset="100%" stop-color="#FF7A00"/>
+    </radialGradient>
+  </defs>
+  <circle cx="64" cy="64" r="51.2" fill="url(#grad)"/>
+  <!-- Emoji de doce simplificado como texto -->
+  <text x="64" y="79.36" 
+        font-size="57.6" 
+        text-anchor="middle" 
+        font-family="Segoe UI Emoji, Apple Color Emoji, sans-serif">🍬</text>
+</svg>
