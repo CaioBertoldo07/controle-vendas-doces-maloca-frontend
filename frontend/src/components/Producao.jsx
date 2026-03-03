@@ -320,7 +320,7 @@ export default function Producao() {
       {/* Modal */}
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
-          <div className="modal-content" style={{ maxWidth:500 }} onClick={e => e.stopPropagation()}>
+          <div className="modal-content" style={{ maxWidth:500, maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
             <h3>{editando ? '✏️ Editar Registro' : '🏭 Registrar Produção'}</h3>
             <form onSubmit={handleSubmit}>
               <div className="form-group">
