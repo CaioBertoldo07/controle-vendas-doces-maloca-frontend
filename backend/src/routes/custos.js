@@ -1,7 +1,7 @@
 import express from "express";
 import * as custosController from "../controllers/custosController.js"
 
-const router = express.Router()
+const router = express.Router();
 
 router.get("/resumo", custosController.resumoCustos);
 router.get("/", custosController.listarCustos);
