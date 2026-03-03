@@ -1,5 +1,5 @@
 import express from "express";
-import * as custosController from "../controllers/custosController"
+import * as custosController from "../controllers/custosController.js"
 
 const router = express.Router();
 
