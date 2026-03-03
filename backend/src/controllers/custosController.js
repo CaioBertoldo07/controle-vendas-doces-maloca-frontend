@@ -40,7 +40,7 @@ export const criarCusto = async (req, res) => {
     if (!quantidade || parseFloat(quantidade) <= 0)
       return res.status(400).json({ error: "Quantidade inválida" });
     if (!unidade?.trim())
-      return res.status(400).json({ error: "Unidade é obridatória" });
+      return res.status(400).json({ error: "Unidade é obrigatória" });
     if (!valorTotal || parseFloat(valorTotal) <= 0)
       return res.status(400).json({ error: "Valor inválido" });
 
@@ -117,7 +117,7 @@ export const resumoCustos = async (req, res) => {
   try {
     const { mes, ano } = req.query;
     const anoAtual = ano ? parseInt(ano) : new Date().getFullYear();
-    const mesAtual = mes ? parseInt(mes) : new Date().getMonth + 1;
+    const mesAtual = mes ? parseInt(mes) : new Date().getMonth() + 1;
 
     const startDate = new Date(anoAtual, mesAtual - 1, 1);
     const endDate = new Date(anoAtual, mesAtual, 0, 23, 59, 59);
@@ -151,6 +151,7 @@ export const resumoCustos = async (req, res) => {
         quantidade: cm.length,
       });
     }
+
     res.json({
       totalGeral: totalGeral.toFixed(2),
       totalItens: custos.length,

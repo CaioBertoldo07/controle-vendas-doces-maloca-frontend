@@ -135,7 +135,7 @@ export const resumoProducao = async (req, res) => {
     // Resumo anual
     const meses = [];
     for (let m = 1; m <= 12; m++) {
-      const s = new Date(anoAtual, m - 1, m);
+      const s = new Date(anoAtual, m - 1, 1);
       const e = new Date(anoAtual, m, 0, 23, 59, 59);
       const pm = await prisma.producao.findMany({
         where: { data: { gte: s, lte: e } },
@@ -165,7 +165,7 @@ export const resumoProducao = async (req, res) => {
       meses,
     });
   } catch (error) {
-    console.error("Erro no resumo de produção: ", error);
+    console.error("Erro no resumo de produção:", error);
     res.status(500).json({ error: "Erro ao gerar resumo" });
   }
 };
