@@ -24,11 +24,12 @@ model Cliente {
 }
 
 model Sabor {
-  id            Int          @id @default(autoincrement())
-  nome          String       @db.VarChar(50)
-  precoUnitario Decimal      @db.Decimal(10, 2)
-  ativo         Boolean      @default(true)
-  vendaSabores  VendaSabor[]
+  id              Int             @id @default(autoincrement())
+  nome            String          @db.VarChar(50)
+  precoUnitario   Decimal         @db.Decimal(10, 2)
+  ativo           Boolean         @default(true)
+  vendaSabores    VendaSabor[]
+  producaoSabores ProducaoSabor[] // novo
   @@map("sabores")
 }
 
@@ -72,10 +73,22 @@ model Custo {
 }
 
 model Producao {
-  id         Int      @id @default(autoincrement())
-  quantidade Int
-  data       DateTime @default(now())
-  observacao String?  @db.VarChar(255)
+  id         Int             @id @default(autoincrement())
+  data       DateTime        @default(now())
+  observacao String?         @db.VarChar(255)
+  sabores    ProducaoSabor[]
   @@index([data])
   @@map("producao")
+}
+
+model ProducaoSabor {
+  id         Int      @id @default(autoincrement())
+  producaoId Int
+  saborId    Int
+  quantidade Int
+  producao   Producao @relation(fields: [producaoId], references: [id], onDelete: Cascade)
+  sabor      Sabor    @relation(fields: [saborId], references: [id])
+  @@index([producaoId])
+  @@index([saborId])
+  @@map("producao_sabores")
 }

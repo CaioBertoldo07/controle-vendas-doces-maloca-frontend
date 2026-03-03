@@ -15,6 +15,11 @@ export const listarProducao = async (req, res) => {
     const producao = await prisma.producao.findMany({
       where,
       orderBy: { data: "desc" },
+      include: {
+        sabores: {
+          include: { sabor: true },
+        },
+      },
     });
     res.json(producao);
   } catch (error) {
@@ -24,16 +29,31 @@ export const listarProducao = async (req, res) => {
 
 export const criarProducao = async (req, res) => {
   try {
-    const { quantidade, data, observacao } = req.body;
+    const { data, observacao, sabores } = req.body;
 
-    if (!quantidade || parseInt(quantidade) <= 0)
-      return res.status(400).json({ error: "Quantidade inválida" });
+    if (!sabores || sabores.length === 0)
+      return res.status(400).json({ error: "Informe ao menos um sabor" });
+
+    for (const s of sabores) {
+      if (!s.saborId || !s.quantidade || parseInt(s.quantidade) <= 0)
+        return res
+          .status(400)
+          .json({ error: "Quantidade inválida para um dos sabores" });
+    }
 
     const producao = await prisma.producao.create({
       data: {
-        quantidade: parseInt(quantidade),
         data: data ? new Date(data) : new Date(),
         observacao: observacao?.trim() || null,
+        sabores: {
+          create: sabores.map((s) => ({
+            saborId: parseInt(s.saborId),
+            quantidade: parseInt(s.quantidade),
+          })),
+        },
+      },
+      include: {
+        sabores: { include: { sabor: true } },
       },
     });
     res.status(201).json(producao);
@@ -47,7 +67,7 @@ export const criarProducao = async (req, res) => {
 export const atualizarProducao = async (req, res) => {
   try {
     const { id } = req.params;
-    const { quantidade, data, observacao } = req.body;
+    const { data, observacao, sabores } = req.body;
 
     const existe = await prisma.producao.findUnique({
       where: { id: parseInt(id) },
@@ -55,14 +75,29 @@ export const atualizarProducao = async (req, res) => {
     if (!existe)
       return res.status(404).json({ error: "Registro não encontrado" });
 
+    // Deletar sabores antigos e recriar
+    await prisma.producaoSabor.deleteMany({
+      where: { producaoId: parseInt(id) },
+    });
+
     const producao = await prisma.producao.update({
       where: { id: parseInt(id) },
       data: {
-        ...(quantidade && { quantidade: parseInt(quantidade) }),
         ...(data && { data: new Date(data) }),
         ...(observacao !== undefined && {
           observacao: observacao?.trim() || null,
         }),
+        ...(sabores && {
+          sabores: {
+            create: sabores.map((s) => ({
+              saborId: parseInt(s.saborId),
+              quantidade: parseInt(s.quantidade),
+            })),
+          },
+        }),
+      },
+      include: {
+        sabores: { include: { sabor: true } },
       },
     });
     res.json(producao);
@@ -95,13 +130,25 @@ export const resumoProducao = async (req, res) => {
     const startDate = new Date(anoAtual, mesAtual - 1, 1);
     const endDate = new Date(anoAtual, mesAtual, 0, 23, 59, 59);
 
-    // Total do mês
     const producaoMes = await prisma.producao.findMany({
       where: { data: { gte: startDate, lte: endDate } },
       orderBy: { data: "asc" },
+      include: { sabores: { include: { sabor: true } } },
     });
 
-    const totalMes = producaoMes.reduce((sum, p) => sum + p.quantidade, 0);
+    const totalMes = producaoMes.reduce(
+      (sum, p) => sum + p.sabores.reduce((s2, ps) => s2 + ps.quantidade, 0),
+      0,
+    );
+
+    // Por sabor no mês
+    const porSabor = {};
+    producaoMes.forEach((p) => {
+      p.sabores.forEach((ps) => {
+        const nome = ps.sabor.nome;
+        porSabor[nome] = (porSabor[nome] || 0) + ps.quantidade;
+      });
+    });
 
     // Esta semana
     const hoje = new Date();
@@ -113,13 +160,11 @@ export const resumoProducao = async (req, res) => {
     fimSemana.setDate(inicioSemana.getDate() + 6);
     fimSemana.setHours(23, 59, 59);
 
-    const producaoSemana = await prisma.producao.findMany({
-      where: { data: { gte: inicioSemana, lte: fimSemana } },
+    const producaoSemana = await prisma.producaoSabor.aggregate({
+      where: { producao: { data: { gte: inicioSemana, lte: fimSemana } } },
+      _sum: { quantidade: true },
     });
-    const totalSemana = producaoSemana.reduce(
-      (sum, p) => sum + p.quantidade,
-      0,
-    );
+    const totalSemana = producaoSemana._sum.quantidade || 0;
 
     // Hoje
     const inicioDia = new Date(hoje);
@@ -127,29 +172,29 @@ export const resumoProducao = async (req, res) => {
     const fimDia = new Date(hoje);
     fimDia.setHours(23, 59, 59);
 
-    const producaoHoje = await prisma.producao.findMany({
-      where: { data: { gte: inicioDia, lte: fimDia } },
+    const producaoHoje = await prisma.producaoSabor.aggregate({
+      where: { producao: { data: { gte: inicioDia, lte: fimDia } } },
+      _sum: { quantidade: true },
     });
-    const totalHoje = producaoHoje.reduce((sum, p) => sum + p.quantidade, 0);
+    const totalHoje = producaoHoje._sum.quantidade || 0;
 
     // Resumo anual
     const meses = [];
     for (let m = 1; m <= 12; m++) {
       const s = new Date(anoAtual, m - 1, 1);
       const e = new Date(anoAtual, m, 0, 23, 59, 59);
-      const pm = await prisma.producao.findMany({
-        where: { data: { gte: s, lte: e } },
+      const agg = await prisma.producaoSabor.aggregate({
+        where: { producao: { data: { gte: s, lte: e } } },
+        _sum: { quantidade: true },
       });
-      const total = pm.reduce((sum, p) => sum + p.quantidade, 0);
       meses.push({
         mes: m,
         nomeMes: s.toLocaleString("pt-BR", { month: "long" }),
-        total,
-        registros: pm.length,
+        total: agg._sum.quantidade || 0,
       });
     }
 
-    // Comparar produção vs vendas do mês
+    // Vendas do mês para comparação
     const vendas = await prisma.venda.findMany({
       where: { data: { gte: startDate, lte: endDate } },
     });
@@ -161,11 +206,12 @@ export const resumoProducao = async (req, res) => {
       totalMes,
       totalVendidoMes: totalVendido,
       saldoEstoque: totalMes - totalVendido,
+      porSabor,
       registros: producaoMes,
       meses,
     });
   } catch (error) {
-    console.error("Erro no resumo de produção:", error);
+    console.error("Erro no resumo:", error);
     res.status(500).json({ error: "Erro ao gerar resumo" });
   }
 };

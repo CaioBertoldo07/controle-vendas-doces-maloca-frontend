@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { producaoAPI } from '../services/api';
+import { producaoAPI, saboresAPI } from '../services/api';
 
 function brParaIso(dataBr) {
   const [dia, mes, ano] = dataBr.split('/');
@@ -22,16 +22,20 @@ function formatarData(data) {
 const mesAtual = new Date().getMonth() + 1;
 const anoAtual = new Date().getFullYear();
 
+const SABOR_CORES = ['#f59e0b','#10b981','#3b82f6','#ec4899','#8b5cf6','#ef4444'];
+
 export default function Producao() {
   const [resumo, setResumo] = useState(null);
+  const [saboresDisponiveis, setSaboresDisponiveis] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editando, setEditando] = useState(null);
   const [filtros, setFiltros] = useState({ mes: mesAtual, ano: anoAtual });
-  const [form, setForm] = useState({ quantidade:'', data: hojeFormatado(), observacao:'' });
-  const [msg, setMsg] = useState({ text:'', type:'' });
+  const [form, setForm] = useState({ data: hojeFormatado(), observacao: '', sabores: {} });
+  const [msg, setMsg] = useState({ text: '', type: '' });
 
   useEffect(() => { carregar(); }, [filtros]);
+  useEffect(() => { carregarSabores(); }, []);
 
   const carregar = async () => {
     setLoading(true);
@@ -45,27 +49,46 @@ export default function Producao() {
     }
   };
 
-  const showMsg = (text, type='success') => {
-    setMsg({ text, type });
-    setTimeout(() => setMsg({ text:'', type:'' }), 3500);
+  const carregarSabores = async () => {
+    try {
+      const response = await saboresAPI.listar();
+      setSaboresDisponiveis(response.data);
+    } catch {}
   };
 
-  const abrirModal = (reg=null) => {
+  const showMsg = (text, type = 'success') => {
+    setMsg({ text, type });
+    setTimeout(() => setMsg({ text: '', type: '' }), 3500);
+  };
+
+  const handleQuantidade = (saborId, qtd) => {
+    const q = parseInt(qtd) || 0;
+    const novo = { ...form.sabores };
+    if (q <= 0) delete novo[saborId];
+    else novo[saborId] = q;
+    setForm({ ...form, sabores: novo });
+  };
+
+  const totalSelecionado = Object.values(form.sabores).reduce((s, q) => s + q, 0);
+
+  const abrirModal = (reg = null) => {
     if (reg) {
       setEditando(reg.id);
       const isoStr = typeof reg.data === 'string' ? reg.data : new Date(reg.data).toISOString();
       const [datePart] = isoStr.split('T');
       const [ano, mes, dia] = datePart.split('-');
-      setForm({ quantidade: reg.quantidade, data: `${dia}/${mes}/${ano}`, observacao: reg.observacao || '' });
+      const saboresForm = {};
+      reg.sabores.forEach(ps => { saboresForm[ps.saborId] = ps.quantidade; });
+      setForm({ data: `${dia}/${mes}/${ano}`, observacao: reg.observacao || '', sabores: saboresForm });
     } else {
       setEditando(null);
-      setForm({ quantidade:'', data: hojeFormatado(), observacao:'' });
+      setForm({ data: hojeFormatado(), observacao: '', sabores: {} });
     }
     setShowModal(true);
   };
 
   const handleDataChange = (e) => {
-    let v = e.target.value.replace(/\D/g,'');
+    let v = e.target.value.replace(/\D/g, '');
     if (v.length > 2) v = v.slice(0,2) + '/' + v.slice(2);
     if (v.length > 5) v = v.slice(0,5) + '/' + v.slice(5);
     if (v.length > 10) v = v.slice(0,10);
@@ -76,10 +99,14 @@ export default function Producao() {
     e.preventDefault();
     const dataIso = brParaIso(form.data);
     if (!dataIso) { showMsg('Data inválida', 'error'); return; }
-    if (!form.quantidade || parseInt(form.quantidade) <= 0) { showMsg('Quantidade inválida', 'error'); return; }
+    if (totalSelecionado === 0) { showMsg('Selecione ao menos um sabor', 'error'); return; }
+
+    const saboresArray = Object.entries(form.sabores).map(([saborId, quantidade]) => ({
+      saborId: parseInt(saborId), quantidade
+    }));
 
     try {
-      const payload = { quantidade: parseInt(form.quantidade), data: dataIso, observacao: form.observacao };
+      const payload = { data: dataIso, observacao: form.observacao, sabores: saboresArray };
       if (editando) {
         await producaoAPI.atualizar(editando, payload);
         showMsg('✅ Registro atualizado!');
@@ -112,6 +139,7 @@ export default function Producao() {
   ];
 
   const maxMes = resumo ? Math.max(...(resumo.meses?.map(m => m.total) || [1]), 1) : 1;
+  const totalPorSabor = resumo?.porSabor || {};
 
   return (
     <div>
@@ -154,10 +182,35 @@ export default function Producao() {
         </div>
       )}
 
+      {/* Por sabor */}
+      {Object.keys(totalPorSabor).length > 0 && (
+        <div className="card" style={{ marginBottom:'1.5rem' }}>
+          <h2>🍬 Produção por Sabor — {meses.find(m => m.v == filtros.mes)?.l}</h2>
+          <div className="sabores-grid" style={{ marginTop:'1rem' }}>
+            {Object.entries(totalPorSabor).map(([nome, qtd], i) => (
+              <div key={nome} className="sabor-item" style={{ flexDirection:'column', alignItems:'flex-start', gap:'0.5rem', padding:'1rem' }}>
+                <div style={{ display:'flex', justifyContent:'space-between', width:'100%', alignItems:'center' }}>
+                  <span style={{ fontWeight:600 }}>{nome}</span>
+                  <span style={{ color: SABOR_CORES[i % SABOR_CORES.length], fontWeight:'bold', fontSize:'1.3rem' }}>{qtd}</span>
+                </div>
+                <div style={{ width:'100%', background:'var(--bg-primary)', borderRadius:'999px', height:'6px' }}>
+                  <div style={{
+                    height:'6px', borderRadius:'999px',
+                    background: SABOR_CORES[i % SABOR_CORES.length],
+                    width: `${(qtd / resumo.totalMes) * 100}%`,
+                    transition:'width 0.6s ease'
+                  }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Filtros + lista */}
       <div className="card">
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'1.5rem', flexWrap:'wrap', gap:'1rem' }}>
-          <h2>🏭 Controle de Produção</h2>
+          <h2>🏭 Registros de Produção</h2>
           <button className="btn-primary" onClick={() => abrirModal()} style={{ width:'auto', padding:'0.8rem 1.5rem' }}>
             ➕ Registrar Produção
           </button>
@@ -179,7 +232,6 @@ export default function Producao() {
           </div>
         </div>
 
-        {/* Registros do mês */}
         {loading ? (
           <div className="loading">Carregando</div>
         ) : !resumo?.registros?.length ? (
@@ -194,25 +246,41 @@ export default function Producao() {
               <thead>
                 <tr>
                   <th>Data</th>
-                  <th>Quantidade</th>
+                  <th>Sabores</th>
+                  <th>Total</th>
                   <th>Observação</th>
                   <th style={{ textAlign:'center' }}>Ações</th>
                 </tr>
               </thead>
               <tbody>
-                {resumo.registros.map(r => (
-                  <tr key={r.id}>
-                    <td>{formatarData(r.data)}</td>
-                    <td style={{ color:'var(--laranja-maloca)', fontWeight:'bold', fontSize:'1.1rem' }}>{r.quantidade}</td>
-                    <td style={{ color:'var(--text-secondary)' }}>{r.observacao || '—'}</td>
-                    <td>
-                      <div style={{ display:'flex', gap:'0.5rem', justifyContent:'center' }}>
-                        <button onClick={() => abrirModal(r)} style={{ background:'var(--laranja-maloca)', color:'#fff', border:'none', padding:'0.5rem 0.8rem', borderRadius:'6px', cursor:'pointer' }}>✏️</button>
-                        <button onClick={() => handleDeletar(r.id)} style={{ background:'var(--vermelho-erro)', color:'var(--vermelho-texto)', border:'1px solid var(--vermelho-texto)', padding:'0.5rem 0.8rem', borderRadius:'6px', cursor:'pointer' }}>🗑️</button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                {resumo.registros.map(r => {
+                  const total = r.sabores.reduce((s, ps) => s + ps.quantidade, 0);
+                  return (
+                    <tr key={r.id}>
+                      <td>{formatarData(r.data)}</td>
+                      <td>
+                        <div style={{ display:'flex', flexWrap:'wrap', gap:'0.4rem' }}>
+                          {r.sabores.map(ps => (
+                            <span key={ps.id} style={{
+                              background:'var(--bg-primary)', border:'1px solid var(--border-color)',
+                              borderRadius:'6px', padding:'0.2rem 0.6rem', fontSize:'0.85rem'
+                            }}>
+                              {ps.sabor.nome}: <strong>{ps.quantidade}</strong>
+                            </span>
+                          ))}
+                        </div>
+                      </td>
+                      <td style={{ color:'var(--laranja-maloca)', fontWeight:'bold', fontSize:'1.1rem' }}>{total}</td>
+                      <td style={{ color:'var(--text-secondary)' }}>{r.observacao || '—'}</td>
+                      <td>
+                        <div style={{ display:'flex', gap:'0.5rem', justifyContent:'center' }}>
+                          <button onClick={() => abrirModal(r)} style={{ background:'var(--laranja-maloca)', color:'#fff', border:'none', padding:'0.5rem 0.8rem', borderRadius:'6px', cursor:'pointer' }}>✏️</button>
+                          <button onClick={() => handleDeletar(r.id)} style={{ background:'var(--vermelho-erro)', color:'var(--vermelho-texto)', border:'1px solid var(--vermelho-texto)', padding:'0.5rem 0.8rem', borderRadius:'6px', cursor:'pointer' }}>🗑️</button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -230,12 +298,11 @@ export default function Producao() {
                 <div key={m.mes} style={{ textAlign:'center' }}>
                   <div style={{ height:'180px', display:'flex', alignItems:'flex-end', justifyContent:'center' }}>
                     <div style={{
-                      width:'100%', maxWidth:'50px', height:`${h}px`,
+                      width:'100%', maxWidth:'50px', height:`${Math.max(h, m.total > 0 ? 30 : 0)}px`,
                       background:'linear-gradient(to top, var(--laranja-maloca), var(--laranja-hover))',
                       borderRadius:'6px 6px 0 0', display:'flex', alignItems:'flex-start',
                       justifyContent:'center', paddingTop:'0.3rem',
                       color:'white', fontSize:'0.8rem', fontWeight:'bold',
-                      minHeight: m.total > 0 ? '30px' : '0'
                     }}>
                       {m.total > 0 ? m.total : ''}
                     </div>
@@ -253,23 +320,49 @@ export default function Producao() {
       {/* Modal */}
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()}>
+          <div className="modal-content" style={{ maxWidth:500 }} onClick={e => e.stopPropagation()}>
             <h3>{editando ? '✏️ Editar Registro' : '🏭 Registrar Produção'}</h3>
             <form onSubmit={handleSubmit}>
               <div className="form-group">
-                <label>Quantidade de Cocadas *</label>
-                <input type="number" min="1" value={form.quantidade} onChange={e => setForm({...form, quantidade:e.target.value})} placeholder="Ex: 50" required autoFocus />
-              </div>
-              <div className="form-group">
                 <label>Data *</label>
-                <input type="text" value={form.data} onChange={handleDataChange} placeholder="DD/MM/AAAA" maxLength={10} required />
+                <input type="text" value={form.data} onChange={handleDataChange} placeholder="DD/MM/AAAA" maxLength={10} required autoFocus />
               </div>
+
+              <div className="sabores-section">
+                <h3>🍬 Quantidade por Sabor</h3>
+                <div className="sabores-grid">
+                  {saboresDisponiveis.map(sabor => (
+                    <div key={sabor.id} className="sabor-item">
+                      <div className="sabor-info">
+                        <span className="sabor-nome">{sabor.nome}</span>
+                      </div>
+                      <input
+                        type="number"
+                        min="0"
+                        value={form.sabores[sabor.id] || ''}
+                        onChange={e => handleQuantidade(sabor.id, e.target.value)}
+                        placeholder="Qtd"
+                        className="sabor-input"
+                      />
+                    </div>
+                  ))}
+                </div>
+                {totalSelecionado > 0 && (
+                  <div style={{ marginTop:'0.8rem', textAlign:'right', color:'var(--laranja-maloca)', fontWeight:'bold' }}>
+                    Total: {totalSelecionado} cocadas
+                  </div>
+                )}
+              </div>
+
               <div className="form-group">
                 <label>Observação</label>
                 <input type="text" value={form.observacao} onChange={e => setForm({...form, observacao:e.target.value})} placeholder="Ex: Lote especial, feriado..." />
               </div>
+
               <div style={{ display:'flex', gap:'1rem' }}>
-                <button type="submit" className="btn-primary">{editando ? '💾 Atualizar' : '✨ Registrar'}</button>
+                <button type="submit" className="btn-primary" disabled={totalSelecionado === 0}>
+                  {editando ? '💾 Atualizar' : '✨ Registrar'}
+                </button>
                 <button type="button" onClick={() => setShowModal(false)} className="btn-secondary" style={{ flex:1 }}>Cancelar</button>
               </div>
             </form>
