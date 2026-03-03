@@ -6,6 +6,8 @@ import DashboardHome from '../components/Dashboard';
 import GerenciarClientes from '../components/GerenciarClientes';
 import AnaliseSabores from '../components/AnaliseSabores';
 import GerenciarSabores from '../components/GerenciarSabores';
+import Custos from '../components/Custos';
+import Producao from '../components/Producao';
 import ThemeToggle from '../components/ThemeToggle';
 
 function Dashboard() {
@@ -22,12 +24,14 @@ function Dashboard() {
   }, []);
 
   const tabs = [
-    { id: 'dashboard',       label: '📊 Dashboard' },
-    { id: 'registrar',       label: '➕ Registrar Venda' },
-    { id: 'relatorios',      label: '📄 Relatórios' },
-    { id: 'sabores',         label: '🍬 Análise de Sabores' },
-    { id: 'clientes',        label: '👥 Clientes' },
-    { id: 'config-sabores',  label: '⚙️ Sabores' },
+    { id: 'dashboard',      label: '📊 Dashboard' },
+    { id: 'registrar',      label: '➕ Registrar Venda' },
+    { id: 'relatorios',     label: '📄 Relatórios' },
+    { id: 'producao',       label: '🏭 Produção' },
+    { id: 'custos',         label: '💸 Custos' },
+    { id: 'sabores',        label: '🍬 Análise de Sabores' },
+    { id: 'clientes',       label: '👥 Clientes' },
+    { id: 'config-sabores', label: '⚙️ Sabores' },
   ];
 
   return (
@@ -35,7 +39,7 @@ function Dashboard() {
       <header className="header">
         <div className="header-content">
           <h1>
-            <img src="icon.png" alt="ícone" style={{ width: '100px', height: '100px' }} />
+            <img src="icon.png" alt="ícone" style={{ width:'100px', height:'100px' }} />
             Doces e Sabores da Maloca
           </h1>
           <div className="user-info">
@@ -62,6 +66,8 @@ function Dashboard() {
         {activeTab === 'dashboard'      && <DashboardHome />}
         {activeTab === 'registrar'      && <RegistrarVenda />}
         {activeTab === 'relatorios'     && <Relatorios />}
+        {activeTab === 'producao'       && <Producao />}
+        {activeTab === 'custos'         && <Custos />}
         {activeTab === 'sabores'        && <AnaliseSabores />}
         {activeTab === 'clientes'       && <GerenciarClientes />}
         {activeTab === 'config-sabores' && <GerenciarSabores />}

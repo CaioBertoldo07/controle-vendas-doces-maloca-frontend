@@ -13,7 +13,6 @@ model Usuario {
   email    String   @unique @db.VarChar(100)
   senha    String   @db.VarChar(255)
   criadoEm DateTime @default(now())
-
   @@map("usuarios")
 }
 
@@ -21,7 +20,6 @@ model Cliente {
   id     Int     @id @default(autoincrement())
   nome   String  @db.VarChar(100)
   vendas Venda[]
-
   @@map("clientes")
 }
 
@@ -31,7 +29,6 @@ model Sabor {
   precoUnitario Decimal      @db.Decimal(10, 2)
   ativo         Boolean      @default(true)
   vendaSabores  VendaSabor[]
-
   @@map("sabores")
 }
 
@@ -39,11 +36,11 @@ model Venda {
   id         Int          @id @default(autoincrement())
   quantidade Int
   valor      Decimal      @db.Decimal(10, 2)
+  desconto   Decimal      @default(0) @db.Decimal(10, 2)
   data       DateTime     @default(now())
   clienteId  Int
   cliente    Cliente      @relation(fields: [clienteId], references: [id], onDelete: Cascade)
   sabores    VendaSabor[]
-
   @@index([clienteId])
   @@index([data])
   @@map("vendas")
@@ -56,8 +53,29 @@ model VendaSabor {
   quantidade Int
   venda      Venda   @relation(fields: [vendaId], references: [id], onDelete: Cascade)
   sabor      Sabor   @relation(fields: [saborId], references: [id])
-
   @@index([vendaId])
   @@index([saborId])
   @@map("venda_sabores")
+}
+
+model Custo {
+  id         Int      @id @default(autoincrement())
+  nome       String   @db.VarChar(100)
+  categoria  String   @default("Matéria Prima") @db.VarChar(50)
+  quantidade Decimal  @db.Decimal(10, 3)
+  unidade    String   @db.VarChar(20)
+  valorTotal Decimal  @db.Decimal(10, 2)
+  data       DateTime @default(now())
+  observacao String?  @db.VarChar(255)
+  @@index([data])
+  @@map("custos")
+}
+
+model Producao {
+  id         Int      @id @default(autoincrement())
+  quantidade Int
+  data       DateTime @default(now())
+  observacao String?  @db.VarChar(255)
+  @@index([data])
+  @@map("producao")
 }

@@ -46,12 +46,12 @@ function Relatorios() {
   };
 
   const formatarData = (data) => {
-    return new Date(data).toLocaleDateString('pt-BR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric'
-    });
-  };
+    // Pega só a parte da data (YYYY-MM-DD) ignorando timezone
+    const isoStr = typeof data === 'string' ? data : new Date(data).toISOString();
+    const [datePart] = isoStr.split('T');
+    const [ano, mes, dia] = datePart.split('-');
+    return `${dia}/${mes}/${ano}`;
+};
 
   const formatarMoeda = (valor) => {
     return new Intl.NumberFormat('pt-BR', {
@@ -234,7 +234,8 @@ function Relatorios() {
                   <th>Data</th>
                   <th>Cliente</th>
                   <th>Quantidade</th>
-                  <th>Valor</th>
+                      <th>Valor</th>
+                      <th>Desconto</th>
                 </tr>
               </thead>
               <tbody>
@@ -255,6 +256,9 @@ function Relatorios() {
                       fontSize: '1.1rem'
                     }}>
                       {formatarMoeda(parseFloat(venda.valor))}
+                    </td>
+                    <td style={{ color: venda.desconto > 0 ? '#f59e0b' : 'var(--text-secondary)', fontWeight: venda.desconto > 0 ? 'bold' : 'normal' }}>
+                      {parseFloat(venda.desconto || 0) > 0 ? `- ${formatarMoeda(parseFloat(venda.desconto))}` : '-'}
                     </td>
                   </tr>
                 ))}

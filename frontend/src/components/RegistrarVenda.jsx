@@ -2,27 +2,17 @@ import { useState, useEffect } from 'react';
 import { clientesAPI, vendasAPI, saboresAPI } from '../services/api';
 import './RegistrarVenda.css';
 
-// Converte DD/MM/AAAA → YYYY-MM-DD para a API
 function brParaIso(dataBr) {
   const [dia, mes, ano] = dataBr.split('/');
   if (!dia || !mes || !ano) return '';
-  return `${ano}-${mes.padStart(2, '0')}-${dia.padStart(2, '0')}`;
+  return `${ano}-${mes.padStart(2,'0')}-${dia.padStart(2,'0')}`;
 }
 
-// Converte YYYY-MM-DD → DD/MM/AAAA para exibição
-function isoParaBr(dataIso) {
-  if (!dataIso) return '';
-  const [ano, mes, dia] = dataIso.split('-');
-  return `${dia}/${mes}/${ano}`;
-}
-
-// Data de hoje no formato brasileiro
 function hojeFormatado() {
   const hoje = new Date();
-  const dia = String(hoje.getDate()).padStart(2, '0');
-  const mes = String(hoje.getMonth() + 1).padStart(2, '0');
-  const ano = hoje.getFullYear();
-  return `${dia}/${mes}/${ano}`;
+  const dia = String(hoje.getDate()).padStart(2,'0');
+  const mes = String(hoje.getMonth()+1).padStart(2,'0');
+  return `${dia}/${mes}/${hoje.getFullYear()}`;
 }
 
 function RegistrarVenda() {
@@ -30,16 +20,18 @@ function RegistrarVenda() {
   const [saboresDisponiveis, setSaboresDisponiveis] = useState([]);
   const [formData, setFormData] = useState({
     clienteId: '',
-    data: hojeFormatado()   // agora em DD/MM/AAAA
+    data: hojeFormatado(),
+    desconto: ''
   });
   const [saboresSelecionados, setSaboresSelecionados] = useState({});
+  const [valorBruto, setValorBruto] = useState(0);
   const [valorTotal, setValorTotal] = useState('0.00');
   const [valorEditavel, setValorEditavel] = useState(false);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
 
   useEffect(() => { carregarDados(); }, []);
-  useEffect(() => { calcularValorTotal(); }, [saboresSelecionados]);
+  useEffect(() => { calcularValores(); }, [saboresSelecionados, formData.desconto]);
 
   const carregarDados = async () => {
     try {
@@ -54,36 +46,38 @@ function RegistrarVenda() {
     }
   };
 
-  const calcularValorTotal = () => {
+  const calcularValores = () => {
     if (valorEditavel) return;
-    const total = Object.entries(saboresSelecionados).reduce((sum, [saborId, qtd]) => {
+    const bruto = Object.entries(saboresSelecionados).reduce((sum, [saborId, qtd]) => {
       const sabor = saboresDisponiveis.find(s => s.id === parseInt(saborId));
       return sum + (qtd * parseFloat(sabor?.precoUnitario || 0));
     }, 0);
-    setValorTotal(total.toFixed(2));
+    setValorBruto(bruto);
+    const desconto = parseFloat(formData.desconto) || 0;
+    const liquido = Math.max(0, bruto - desconto);
+    setValorTotal(liquido.toFixed(2));
   };
 
   const handleQuantidadeSabor = (saborId, quantidade) => {
     const qtd = parseInt(quantidade) || 0;
     if (qtd === 0) {
-      const newSabores = { ...saboresSelecionados };
-      delete newSabores[saborId];
-      setSaboresSelecionados(newSabores);
+      const ns = { ...saboresSelecionados };
+      delete ns[saborId];
+      setSaboresSelecionados(ns);
     } else {
       setSaboresSelecionados({ ...saboresSelecionados, [saborId]: qtd });
     }
   };
 
-  // Máscara de data: formata enquanto digita → DD/MM/AAAA
   const handleDataChange = (e) => {
-    let valor = e.target.value.replace(/\D/g, ''); // só números
-    if (valor.length > 2) valor = valor.slice(0, 2) + '/' + valor.slice(2);
-    if (valor.length > 5) valor = valor.slice(0, 5) + '/' + valor.slice(5);
-    if (valor.length > 10) valor = valor.slice(0, 10);
-    setFormData({ ...formData, data: valor });
+    let v = e.target.value.replace(/\D/g,'');
+    if (v.length > 2) v = v.slice(0,2) + '/' + v.slice(2);
+    if (v.length > 5) v = v.slice(0,5) + '/' + v.slice(5);
+    if (v.length > 10) v = v.slice(0,10);
+    setFormData({ ...formData, data: v });
   };
 
-  const quantidadeTotal = Object.values(saboresSelecionados).reduce((sum, qtd) => sum + qtd, 0);
+  const quantidadeTotal = Object.values(saboresSelecionados).reduce((s,q) => s+q, 0);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -96,32 +90,32 @@ function RegistrarVenda() {
       return;
     }
 
-    // Validar data
     const dataIso = brParaIso(formData.data);
     if (!dataIso) {
-      setMessage('❌ Data inválida. Use o formato DD/MM/AAAA');
+      setMessage('❌ Data inválida. Use DD/MM/AAAA');
       setLoading(false);
       return;
     }
 
     try {
       const saboresArray = Object.entries(saboresSelecionados).map(([saborId, quantidade]) => ({
-        saborId: parseInt(saborId),
-        quantidade
+        saborId: parseInt(saborId), quantidade
       }));
 
       await vendasAPI.criar({
         clienteId: formData.clienteId,
         quantidade: quantidadeTotal,
         valor: parseFloat(valorTotal),
-        data: dataIso,   // manda YYYY-MM-DD para a API
+        desconto: parseFloat(formData.desconto) || 0,
+        data: dataIso,
         sabores: saboresArray
       });
 
       setMessage('✅ Venda registrada com sucesso!');
-      setFormData({ clienteId: '', data: hojeFormatado() });
+      setFormData({ clienteId: '', data: hojeFormatado(), desconto: '' });
       setSaboresSelecionados({});
       setValorTotal('0.00');
+      setValorBruto(0);
       setValorEditavel(false);
       setTimeout(() => setMessage(''), 3000);
     } catch (error) {
@@ -145,8 +139,8 @@ function RegistrarVenda() {
               required
             >
               <option value="">Selecione um cliente</option>
-              {clientes.map((cliente) => (
-                <option key={cliente.id} value={cliente.id}>{cliente.nome}</option>
+              {clientes.map((c) => (
+                <option key={c.id} value={c.id}>{c.nome}</option>
               ))}
             </select>
           </div>
@@ -191,8 +185,37 @@ function RegistrarVenda() {
             <span>Quantidade Total:</span>
             <strong>{quantidadeTotal}</strong>
           </div>
+
+          {/* Campo desconto */}
+          <div className="resumo-item">
+            <span>💸 Desconto (R$):</span>
+            <div className="valor-input-group">
+              <span className="currency">R$</span>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                max={valorBruto}
+                value={formData.desconto}
+                onChange={(e) => setFormData({ ...formData, desconto: e.target.value })}
+                placeholder="0.00"
+                className="valor-input"
+                style={{ borderColor: formData.desconto > 0 ? '#f59e0b' : undefined }}
+              />
+            </div>
+          </div>
+
+          {formData.desconto > 0 && (
+            <div className="resumo-item" style={{ fontSize: '0.9rem', opacity: 0.7 }}>
+              <span>Subtotal bruto:</span>
+              <span style={{ color: 'var(--text-secondary)' }}>
+                R$ {valorBruto.toFixed(2)}
+              </span>
+            </div>
+          )}
+
           <div className="resumo-item valor-total">
-            <span>Valor Total:</span>
+            <span>💰 Valor Final:</span>
             <div className="valor-input-group">
               <span className="currency">R$</span>
               <input
@@ -207,11 +230,9 @@ function RegistrarVenda() {
                 <button
                   type="button"
                   className="btn-recalcular"
-                  onClick={() => { setValorEditavel(false); calcularValorTotal(); }}
-                  title="Recalcular automaticamente"
-                >
-                  🔄
-                </button>
+                  onClick={() => { setValorEditavel(false); calcularValores(); }}
+                  title="Recalcular"
+                >🔄</button>
               )}
             </div>
           </div>

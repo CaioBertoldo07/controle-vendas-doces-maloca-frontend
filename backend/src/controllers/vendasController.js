@@ -1,10 +1,11 @@
 import { PrismaClient } from "@prisma/client";
+import { parse } from "dotenv";
 
 const prisma = new PrismaClient();
 
 export const criarVenda = async (req, res) => {
   try {
-    const { clienteId, quantidade, valor, data, sabores } = req.body;
+    const { clienteId, quantidade, valor, desconto, data, sabores } = req.body;
 
     // Validações
     if (
@@ -32,6 +33,7 @@ export const criarVenda = async (req, res) => {
         clienteId: parseInt(clienteId),
         quantidade: parseInt(quantidade),
         valor: parseFloat(valor),
+        desconto: parseFloat(desconto || 0),
         data: data ? new Date(data) : new Date(),
         sabores: {
           create: sabores.map((s) => ({

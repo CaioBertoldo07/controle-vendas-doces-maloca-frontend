@@ -72,4 +72,20 @@ export const vendasAPI = {
     api.get("/vendas/relatorio-mensal", { params: { ano } }),
 };
 
+export const custosAPI = {
+  listar: (params) => api.get("/custos", { params }),
+  criar: (dados) => api.post("/custos", dados),
+  atualizar: (id, dados) => api.put(`/custos/${id}`, dados),
+  deletar: (id) => api.delete(`/custos/${id}`),
+  resumo: (params) => api.get("/custos/resumo", { params }),
+};
+
+export const producaoAPI = {
+  listar: (params) => api.get("/producao", { params }),
+  criar: (dados) => api.post("/producao", dados),
+  atualizar: (id, dados) => api.put(`/producao/${id}`, dados),
+  deleter: (id) => api.delete(`/producao/${id}`),
+  resumo: (params) => api.get("/producao/resumo", { params }),
+};
+
 export default api;
