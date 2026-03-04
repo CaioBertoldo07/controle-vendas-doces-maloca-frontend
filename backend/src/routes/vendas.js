@@ -1,6 +1,8 @@
 import express from "express";
 import * as vendasController from "../controllers/vendasController.js";
 import { validateVenda } from "../middlewares/validations.js";
+import { verificarApiKey } from "../middlewares/apiKeyAuth.js";
+import { criarVendaAuto } from "../controllers/vendasController.js";
 
 const router = express.Router();
 
@@ -24,5 +26,7 @@ router.put("/:id", validateVenda, vendasController.atualizarVenda);
 
 // DELETE /api/vendas/:id - Deletar venda
 router.delete("/:id", vendasController.deletarVenda);
+
+router.post("/auto", verificarApiKey, criarVendaAuto);
 
 export default router;

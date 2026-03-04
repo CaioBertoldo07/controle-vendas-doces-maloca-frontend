@@ -1,7 +1,108 @@
 import { PrismaClient } from "@prisma/client";
 import { parse } from "dotenv";
+import { resolverCliente, resolverSabores } from "../services/resolverNomes.js";
 
 const prisma = new PrismaClient();
+
+export const criarVendaAuto = async (req, res) => {
+  try {
+    const {
+      clienteNome, // "Frutaria Laranjeiras - nome em texto"
+      sabores, // [{ nome: "Tradicional", quantidade: 20 }]
+      valor,
+      desconto = 0,
+      data,
+      idempotencyKey, // chave única enviada pelo n8n para evitar duplicata
+    } = req.body;
+
+    // --- Validações básicas ---
+    if (!clienteNome?.trim()) {
+      return res.status(400).json({ error: "clienteNome é obrigatório" });
+    }
+    if (!sabores || sabores.length === 0) {
+      return res.status(400).json({ error: "Informe ao menos um sabor" });
+    }
+    if (!valor || parseFloat(valor) <= 0) {
+      return res.status(400).json({ error: "Valor inválido" });
+    }
+
+    // --- Idempotência: rejeita duplicata ---
+    if (idempotencyKey) {
+      const vendaExistente = await prisma.venda.findFirst({
+        where: { idempotencyKey },
+      });
+      if (vendaExistente) {
+        return res.status(200).json({
+          message: "Venda já registrada anteriormente (idempotente)",
+          venda: vendaExistente,
+          duplicata: true,
+        });
+      }
+    }
+
+    // --- Resolver Cliente ---
+    const cliente = await resolverCliente(clienteNome);
+    if (!cliente) {
+      return res.status(404).json({
+        error: `Cliente não encontrado: "${clienteNome}"`,
+        sugestao: "Verifique o nome ou cadastre o cliente primeiro",
+      });
+    }
+
+    // --- Resolver Sabores ---
+    const { sabores: saboresResolvidos, naoEncontrados } =
+      await resolverSabores(sabores);
+    if (naoEncontrados.length > 0) {
+      return res.status(404).json({
+        error: "Sabores não encontrados",
+        naoEncontrados,
+        encontrados: saboresResolvidos.length,
+      });
+    }
+
+    const quantidadeTotal = saboresResolvidos.reduce(
+      (s, i) => s + i.quantidade,
+      0,
+    );
+
+    // --- Criar Venda ---
+    const venda = await prisma.venda.create({
+      data: {
+        clienteId: cliente.id,
+        quantidade: quantidadeTotal,
+        valor: parseFloat(valor),
+        desconto: parseFloat(desconto),
+        data: data ? new Date(data) : new Date(),
+        idempotencyKey: idempotencyKey || null,
+        sabores: {
+          create: saboresResolvidos,
+        },
+      },
+      include: {
+        cliente: true,
+        sabores: { include: { sabor: true } },
+      },
+    });
+
+    console.log(
+      `✅ [AUTO] Venda registrada via n8n: ${venda.id} - ${cliente.nome}`,
+    );
+
+    return res.status(201).json({
+      message: "Venda registrada com sucesso",
+      venda,
+      resolucao: {
+        clienteEncontrado: cliente.nome,
+        saboresResolvidos: saboresResolvidos.length,
+      },
+    });
+  } catch (error) {
+    console.error("❌ [AUTO] Erro ao criar venda:", error);
+    return res
+      .status(500)
+      .json({ error: "Erro ao registrar venda: " + error.message });
+  }
+};
 
 export const criarVenda = async (req, res) => {
   try {
@@ -281,7 +382,7 @@ export const relatorioMensal = async (req, res) => {
       const total = vendas.reduce((sum, v) => sum + v.quantidade, 0);
       const valorTotal = vendas.reduce(
         (sum, v) => sum + parseFloat(v.valor),
-        0
+        0,
       );
 
       meses.push({

@@ -39,6 +39,7 @@ model Venda {
   valor      Decimal      @db.Decimal(10, 2)
   desconto   Decimal      @default(0) @db.Decimal(10, 2)
   data       DateTime     @default(now())
+  idempotencyKey   String?      @unique @db.VarChar(100) // ← adicione isso
   clienteId  Int
   cliente    Cliente      @relation(fields: [clienteId], references: [id], onDelete: Cascade)
   sabores    VendaSabor[]
