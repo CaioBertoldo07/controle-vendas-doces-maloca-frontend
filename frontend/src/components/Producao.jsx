@@ -139,7 +139,6 @@ export default function Producao() {
   ];
 
   const maxMes = resumo ? Math.max(...(resumo.meses?.map(m => m.total) || [1]), 1) : 1;
-  const totalPorSabor = resumo?.porSabor || {};
 
   return (
     <div>
@@ -172,22 +171,74 @@ export default function Producao() {
             <div className="value">{resumo.totalMes}</div>
             <div className="subtitle">cocadas produzidas</div>
           </div>
-          <div className="stat-card" style={{ borderColor: resumo.saldoEstoque >= 0 ? '#4ade80' : '#ff6b6b' }}>
-            <h3>📦 Saldo Estimado</h3>
-            <div className="value" style={{ color: resumo.saldoEstoque >= 0 ? '#4ade80' : '#ff6b6b' }}>
-              {resumo.saldoEstoque}
-            </div>
-            <div className="subtitle">produção − vendas do mês</div>
+        </div>
+      )}
+
+      {/* Saldo por sabor */}
+      {resumo && resumo.saldoPorSabor && Object.keys(resumo.saldoPorSabor).length > 0 && (
+        <div className="card" style={{ marginBottom:'1.5rem' }}>
+          <h2>📦 Saldo Estimado por Sabor</h2>
+          <p style={{ color:'var(--text-secondary)', fontSize:'0.9rem', marginBottom:'1.2rem' }}>
+            Produção − Vendas do mês
+          </p>
+          <div style={{ display:'flex', flexDirection:'column', gap:'0.8rem' }}>
+            {Object.entries(resumo.saldoPorSabor).map(([nome, dados], i) => {
+              const cor = dados.saldo >= 0 ? '#4ade80' : '#ff6b6b';
+              const porcentagem = dados.produzido > 0
+                ? Math.min((dados.vendido / dados.produzido) * 100, 100)
+                : 0;
+              return (
+                <div key={nome} style={{
+                  background:'var(--bg-primary)', borderRadius:'12px',
+                  padding:'1rem 1.2rem', border:'1px solid var(--border-color)'
+                }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'0.6rem' }}>
+                    <span style={{ fontWeight:600, fontSize:'1rem' }}>{nome}</span>
+                    <span style={{ color: cor, fontWeight:'bold', fontSize:'1.2rem' }}>
+                      {dados.saldo >= 0 ? '+' : ''}{dados.saldo}
+                    </span>
+                  </div>
+                  <div style={{ display:'flex', gap:'1.5rem', fontSize:'0.85rem', color:'var(--text-secondary)', marginBottom:'0.6rem' }}>
+                    <span>🏭 Produzido: <strong style={{ color:'var(--laranja-maloca)' }}>{dados.produzido}</strong></span>
+                    <span>🛒 Vendido: <strong style={{ color:'var(--text-primary)' }}>{dados.vendido}</strong></span>
+                  </div>
+                  <div style={{ width:'100%', background:'var(--bg-secondary)', borderRadius:'999px', height:'6px' }}>
+                    <div style={{
+                      height:'6px', borderRadius:'999px',
+                      background: porcentagem >= 100 ? '#ff6b6b' : 'var(--laranja-maloca)',
+                      width:`${porcentagem}%`,
+                      transition:'width 0.6s ease'
+                    }} />
+                  </div>
+                  <div style={{ fontSize:'0.78rem', color:'var(--text-secondary)', marginTop:'0.3rem', textAlign:'right' }}>
+                    {porcentagem.toFixed(0)}% vendido
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Total geral */}
+          <div style={{
+            marginTop:'1rem', padding:'0.8rem 1.2rem', borderRadius:'12px',
+            background: resumo.saldoEstoque >= 0 ? '#1a4d2e' : '#4d1a1a',
+            border: `1px solid ${resumo.saldoEstoque >= 0 ? '#4ade80' : '#ff6b6b'}`,
+            display:'flex', justifyContent:'space-between', alignItems:'center'
+          }}>
+            <span style={{ fontWeight:600 }}>Saldo Total</span>
+            <span style={{ color: resumo.saldoEstoque >= 0 ? '#4ade80' : '#ff6b6b', fontWeight:'bold', fontSize:'1.3rem' }}>
+              {resumo.saldoEstoque >= 0 ? '+' : ''}{resumo.saldoEstoque} cocadas
+            </span>
           </div>
         </div>
       )}
 
-      {/* Por sabor */}
-      {Object.keys(totalPorSabor).length > 0 && (
+      {/* Produção por sabor no mês */}
+      {resumo && Object.keys(resumo.porSabor || {}).length > 0 && (
         <div className="card" style={{ marginBottom:'1.5rem' }}>
           <h2>🍬 Produção por Sabor — {meses.find(m => m.v == filtros.mes)?.l}</h2>
           <div className="sabores-grid" style={{ marginTop:'1rem' }}>
-            {Object.entries(totalPorSabor).map(([nome, qtd], i) => (
+            {Object.entries(resumo.porSabor).map(([nome, qtd], i) => (
               <div key={nome} className="sabor-item" style={{ flexDirection:'column', alignItems:'flex-start', gap:'0.5rem', padding:'1rem' }}>
                 <div style={{ display:'flex', justifyContent:'space-between', width:'100%', alignItems:'center' }}>
                   <span style={{ fontWeight:600 }}>{nome}</span>
@@ -197,7 +248,7 @@ export default function Producao() {
                   <div style={{
                     height:'6px', borderRadius:'999px',
                     background: SABOR_CORES[i % SABOR_CORES.length],
-                    width: `${(qtd / resumo.totalMes) * 100}%`,
+                    width: resumo.totalMes > 0 ? `${(qtd / resumo.totalMes) * 100}%` : '0%',
                     transition:'width 0.6s ease'
                   }} />
                 </div>
@@ -298,7 +349,8 @@ export default function Producao() {
                 <div key={m.mes} style={{ textAlign:'center' }}>
                   <div style={{ height:'180px', display:'flex', alignItems:'flex-end', justifyContent:'center' }}>
                     <div style={{
-                      width:'100%', maxWidth:'50px', height:`${Math.max(h, m.total > 0 ? 30 : 0)}px`,
+                      width:'100%', maxWidth:'50px',
+                      height:`${Math.max(h, m.total > 0 ? 30 : 0)}px`,
                       background:'linear-gradient(to top, var(--laranja-maloca), var(--laranja-hover))',
                       borderRadius:'6px 6px 0 0', display:'flex', alignItems:'flex-start',
                       justifyContent:'center', paddingTop:'0.3rem',
@@ -320,12 +372,20 @@ export default function Producao() {
       {/* Modal */}
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
-          <div className="modal-content" style={{ maxWidth:500, maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+          <div className="modal-content" style={{ maxWidth:500, maxHeight:'90vh', overflowY:'auto' }} onClick={e => e.stopPropagation()}>
             <h3>{editando ? '✏️ Editar Registro' : '🏭 Registrar Produção'}</h3>
             <form onSubmit={handleSubmit}>
               <div className="form-group">
                 <label>Data *</label>
-                <input type="text" value={form.data} onChange={handleDataChange} placeholder="DD/MM/AAAA" maxLength={10} required autoFocus />
+                <input
+                  type="text"
+                  value={form.data}
+                  onChange={handleDataChange}
+                  placeholder="DD/MM/AAAA"
+                  maxLength={10}
+                  required
+                  autoFocus
+                />
               </div>
 
               <div className="sabores-section">
@@ -356,14 +416,21 @@ export default function Producao() {
 
               <div className="form-group">
                 <label>Observação</label>
-                <input type="text" value={form.observacao} onChange={e => setForm({...form, observacao:e.target.value})} placeholder="Ex: Lote especial, feriado..." />
+                <input
+                  type="text"
+                  value={form.observacao}
+                  onChange={e => setForm({...form, observacao: e.target.value})}
+                  placeholder="Ex: Lote especial, feriado..."
+                />
               </div>
 
               <div style={{ display:'flex', gap:'1rem' }}>
                 <button type="submit" className="btn-primary" disabled={totalSelecionado === 0}>
                   {editando ? '💾 Atualizar' : '✨ Registrar'}
                 </button>
-                <button type="button" onClick={() => setShowModal(false)} className="btn-secondary" style={{ flex:1 }}>Cancelar</button>
+                <button type="button" onClick={() => setShowModal(false)} className="btn-secondary" style={{ flex:1 }}>
+                  Cancelar
+                </button>
               </div>
             </form>
           </div>

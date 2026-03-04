@@ -195,10 +195,33 @@ export const resumoProducao = async (req, res) => {
     }
 
     // Vendas do mês para comparação
-    const vendas = await prisma.venda.findMany({
-      where: { data: { gte: startDate, lte: endDate } },
+    const vendasSabores = await prisma.vendaSabor.findMany({
+      where: {
+        venda: { data: { gte: startDate, lte: endDate } },
+      },
+      include: { sabor: true },
     });
-    const totalVendido = vendas.reduce((sum, v) => sum + v.quantidade, 0);
+
+    const vendidoPorSabor = {}
+    vendasSabores.forEach(vs => {
+      const nome = vs.sabor.nome
+      vendidoPorSabor[nome] = (vendidoPorSabor[nome] || 0) + vs.quantidade
+    })
+
+    const totalVendido = Object.values(vendidoPorSabor).reduce((s, q) => s + q, 0)
+
+    // Saldo por sabor produzido - vendido
+    const todosSabores = new Set([
+      ...Object.keys(porSabor),
+      ...Object.keys(vendidoPorSabor)
+    ])
+
+    const saldoPorSabor = {}
+    todosSabores.forEach(nome => {
+      const produzido = porSabor[nome] || 0
+      const vendido = vendidoPorSabor[nome] || 0
+      saldoPorSabor[nome] = { produzido, vendido, saldo: produzido - vendido }
+    })
 
     res.json({
       totalHoje,
@@ -207,6 +230,8 @@ export const resumoProducao = async (req, res) => {
       totalVendidoMes: totalVendido,
       saldoEstoque: totalMes - totalVendido,
       porSabor,
+      vendidoPorSabor,
+      saldoPorSabor,
       registros: producaoMes,
       meses,
     });
