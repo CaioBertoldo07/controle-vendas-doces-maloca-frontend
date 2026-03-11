@@ -9,7 +9,8 @@ function Relatorios() {
   const [filtros, setFiltros] = useState({
     mes: new Date().getMonth() + 1,
     ano: new Date().getFullYear(),
-    clienteId: ''
+    clienteId: '',
+    tipo: ''
   });
 
   // Modal de edição
@@ -26,7 +27,7 @@ function Relatorios() {
   const [msg, setMsg] = useState({ text: '', type: '' });
 
   useEffect(() => { carregarClientes(); }, []);
-  useEffect(() => { carregarVendas(); }, [filtros]);
+  useEffect(() => { carregarVendas(); }, [filtros.mes, filtros.ano, filtros.clienteId]);
 
   const carregarClientes = async () => {
     try {
@@ -64,7 +65,16 @@ function Relatorios() {
     setTimeout(() => setMsg({ text: '', type: '' }), 3500);
   };
 
-  // ===== DELETAR VENDA =====
+  // ===== FILTRO DE TIPO (frontend) =====
+  const vendasFiltradas = vendas.filter(v => {
+    if (!filtros.tipo) return true;
+    const ehDireta = v.cliente.nome.toLowerCase().includes('venda direta');
+    if (filtros.tipo === 'direta') return ehDireta;
+    if (filtros.tipo === 'atacado') return !ehDireta;
+    return true;
+  });
+
+  // ===== DELETAR =====
   const handleDeletar = async (venda) => {
     if (!confirm(`Deseja realmente excluir a venda de "${venda.cliente.nome}" (${venda.quantidade} unidades)?`)) return;
     try {
@@ -76,30 +86,27 @@ function Relatorios() {
     }
   };
 
-  // ===== EDITAR VENDA =====
+  // ===== EDITAR =====
   const abrirEdicao = async (venda) => {
-    // Carregar sabores disponíveis se ainda não carregou
     if (saboresDisponiveis.length === 0) {
       try {
-        const { default: axios } = await import('axios');
         const token = localStorage.getItem('token');
         const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
-        const res = await axios.get(`${baseURL}/sabores`, {
+        const res = await fetch(`${baseURL}/sabores`, {
           headers: { Authorization: `Bearer ${token}` }
         });
-        setSaboresDisponiveis(res.data);
+        const data = await res.json();
+        setSaboresDisponiveis(data);
       } catch (e) {
         console.error('Erro ao carregar sabores:', e);
       }
     }
 
-    // Montar sabores já selecionados
     const saboresForm = {};
     venda.sabores?.forEach(vs => {
       saboresForm[vs.saborId] = vs.quantidade;
     });
 
-    // Converter data ISO para DD/MM/AAAA
     const isoStr = typeof venda.data === 'string' ? venda.data : new Date(venda.data).toISOString();
     const [datePart] = isoStr.split('T');
     const [ano, mes, dia] = datePart.split('-');
@@ -171,10 +178,11 @@ function Relatorios() {
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor);
 
   const exportarCSV = () => {
-    const headers = ['Data', 'Cliente', 'Quantidade', 'Valor', 'Desconto'];
-    const rows = vendas.map(v => [
+    const headers = ['Data', 'Cliente', 'Tipo', 'Quantidade', 'Valor', 'Desconto'];
+    const rows = vendasFiltradas.map(v => [
       formatarData(v.data),
       v.cliente.nome,
+      v.cliente.nome.toLowerCase().includes('venda direta') ? 'Direta' : 'Atacado',
       v.quantidade,
       parseFloat(v.valor).toFixed(2),
       parseFloat(v.desconto || 0).toFixed(2)
@@ -184,13 +192,13 @@ function Relatorios() {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `vendas_${filtros.mes}_${filtros.ano}.csv`;
+    a.download = `vendas_${filtros.mes}_${filtros.ano}${filtros.tipo ? '_' + filtros.tipo : ''}.csv`;
     a.click();
   };
 
-  // ===== CÁLCULOS =====
-  const totalGeral = vendas.reduce((sum, v) => sum + v.quantidade, 0);
-  const faturamento = vendas.reduce((sum, v) => sum + parseFloat(v.valor), 0);
+  // ===== CÁLCULOS (sobre vendasFiltradas) =====
+  const totalGeral = vendasFiltradas.reduce((sum, v) => sum + v.quantidade, 0);
+  const faturamento = vendasFiltradas.reduce((sum, v) => sum + parseFloat(v.valor), 0);
   const totalCustos = resumoCustos ? parseFloat(resumoCustos.totalGeral) : 0;
   const lucro = faturamento - totalCustos;
   const margemLucro = faturamento > 0 ? ((lucro / faturamento) * 100).toFixed(1) : 0;
@@ -206,7 +214,7 @@ function Relatorios() {
 
   return (
     <div>
-      {/* Toast de mensagem */}
+      {/* Toast */}
       {msg.text && (
         <div style={{
           position: 'fixed', top: '1.5rem', left: '50%', transform: 'translateX(-50%)',
@@ -231,6 +239,7 @@ function Relatorios() {
               {meses.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
             </select>
           </div>
+
           <div className="form-group" style={{ margin: 0 }}>
             <label>Ano</label>
             <select value={filtros.ano} onChange={(e) => setFiltros({ ...filtros, ano: e.target.value })}>
@@ -240,6 +249,7 @@ function Relatorios() {
               <option value="2024">2024</option>
             </select>
           </div>
+
           <div className="form-group" style={{ margin: 0 }}>
             <label>Cliente</label>
             <select value={filtros.clienteId} onChange={(e) => setFiltros({ ...filtros, clienteId: e.target.value })}>
@@ -247,8 +257,23 @@ function Relatorios() {
               {clientes.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
             </select>
           </div>
+
+          <div className="form-group" style={{ margin: 0 }}>
+            <label>Tipo de Venda</label>
+            <select value={filtros.tipo} onChange={(e) => setFiltros({ ...filtros, tipo: e.target.value })}>
+              <option value="">Todos</option>
+              <option value="atacado">🏪 Atacado</option>
+              <option value="direta">🛒 Venda Direta</option>
+            </select>
+          </div>
+
           <div style={{ display: 'flex', alignItems: 'flex-end' }}>
-            <button className="btn-secondary" onClick={exportarCSV} disabled={vendas.length === 0} style={{ width: '100%' }}>
+            <button
+              className="btn-secondary"
+              onClick={exportarCSV}
+              disabled={vendasFiltradas.length === 0}
+              style={{ width: '100%' }}
+            >
               📥 Exportar CSV
             </button>
           </div>
@@ -261,32 +286,30 @@ function Relatorios() {
           gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
           gap: '1rem'
         }}>
-          {/* Vendas */}
           <div style={cardStyle('#FF7A00')}>
-            <div style={cardLabel}>Total de Vendas</div>
-            <div style={cardValue('#FF7A00')}>{vendas.length}</div>
-            <div style={cardSub}>{totalGeral} unidades</div>
+            <div style={cardLabelStyle}>Total de Vendas</div>
+            <div style={cardValueStyle('#FF7A00')}>{vendasFiltradas.length}</div>
+            <div style={cardSubStyle}>{totalGeral} unidades</div>
           </div>
 
-          {/* Faturamento */}
           <div style={cardStyle('#4ADE80')}>
-            <div style={cardLabel}>💰 Faturamento</div>
-            <div style={cardValue('#4ADE80')}>{formatarMoeda(faturamento)}</div>
-            <div style={cardSub}>receita bruta</div>
+            <div style={cardLabelStyle}>💰 Faturamento</div>
+            <div style={cardValueStyle('#4ADE80')}>{formatarMoeda(faturamento)}</div>
+            <div style={cardSubStyle}>receita bruta</div>
           </div>
 
-          {/* Custos */}
           <div style={cardStyle('#f59e0b')}>
-            <div style={cardLabel}>💸 Custos</div>
-            <div style={cardValue('#f59e0b')}>{formatarMoeda(totalCustos)}</div>
-            <div style={cardSub}>{resumoCustos?.totalItens || 0} lançamentos</div>
+            <div style={cardLabelStyle}>💸 Custos</div>
+            <div style={cardValueStyle('#f59e0b')}>{formatarMoeda(totalCustos)}</div>
+            <div style={cardSubStyle}>{resumoCustos?.totalItens || 0} lançamentos</div>
           </div>
 
-          {/* Lucro */}
           <div style={cardStyle(lucro >= 0 ? '#4ADE80' : '#ff6b6b')}>
-            <div style={cardLabel}>📈 Lucro Estimado</div>
-            <div style={cardValue(lucro >= 0 ? '#4ADE80' : '#ff6b6b')}>{formatarMoeda(lucro)}</div>
-            <div style={{ ...cardSub, color: lucro >= 0 ? '#4ADE80' : '#ff6b6b' }}>
+            <div style={cardLabelStyle}>📈 Lucro Estimado</div>
+            <div style={cardValueStyle(lucro >= 0 ? '#4ADE80' : '#ff6b6b')}>
+              {formatarMoeda(lucro)}
+            </div>
+            <div style={{ ...cardSubStyle, color: lucro >= 0 ? '#4ADE80' : '#ff6b6b' }}>
               margem: {margemLucro}%
             </div>
           </div>
@@ -314,15 +337,28 @@ function Relatorios() {
             </div>
           </div>
         )}
+
+        {/* Aviso quando filtro de tipo está ativo */}
+        {filtros.tipo && (
+          <div style={{
+            marginTop: '1rem', padding: '0.7rem 1rem',
+            background: 'var(--bg-primary)', borderRadius: '8px',
+            border: '1px solid var(--laranja-maloca)',
+            color: 'var(--laranja-maloca)', fontSize: '0.85rem',
+            display: 'flex', alignItems: 'center', gap: '0.5rem'
+          }}>
+            ⚠️ Os custos exibidos são do período completo. O lucro pode não refletir apenas o tipo filtrado.
+          </div>
+        )}
       </div>
 
-      {/* Tabela de vendas */}
+      {/* Tabela */}
       <div className="card">
         <h2>📋 Histórico de Vendas</h2>
 
         {loading ? (
           <div className="loading">Carregando vendas</div>
-        ) : vendas.length === 0 ? (
+        ) : vendasFiltradas.length === 0 ? (
           <div className="empty-state">
             <div className="empty-state-icon">📭</div>
             <h3>Nenhuma venda encontrada</h3>
@@ -335,6 +371,7 @@ function Relatorios() {
                 <tr>
                   <th>Data</th>
                   <th>Cliente</th>
+                  <th>Tipo</th>
                   <th>Qtd</th>
                   <th>Valor</th>
                   <th>Desconto</th>
@@ -342,41 +379,74 @@ function Relatorios() {
                 </tr>
               </thead>
               <tbody>
-                {vendas.map((venda) => (
-                  <tr key={venda.id}>
-                    <td>{formatarData(venda.data)}</td>
-                    <td>{venda.cliente.nome}</td>
-                    <td style={{ color: 'var(--laranja-maloca)', fontWeight: 'bold', fontSize: '1.1rem' }}>
-                      {venda.quantidade}
-                    </td>
-                    <td style={{ color: '#4ADE80', fontWeight: 'bold' }}>
-                      {formatarMoeda(parseFloat(venda.valor))}
-                    </td>
-                    <td style={{ color: parseFloat(venda.desconto) > 0 ? '#f59e0b' : 'var(--text-secondary)', fontWeight: parseFloat(venda.desconto) > 0 ? 'bold' : 'normal' }}>
-                      {parseFloat(venda.desconto || 0) > 0 ? `- ${formatarMoeda(parseFloat(venda.desconto))}` : '-'}
-                    </td>
-                    <td>
-                      <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
-                        <button
-                          onClick={() => abrirEdicao(venda)}
-                          style={{ background: 'var(--laranja-maloca)', color: '#fff', border: 'none', padding: '0.5rem 0.8rem', borderRadius: '6px', cursor: 'pointer', transition: 'all 0.2s' }}
-                          onMouseEnter={e => e.currentTarget.style.background = 'var(--laranja-hover)'}
-                          onMouseLeave={e => e.currentTarget.style.background = 'var(--laranja-maloca)'}
-                        >
-                          ✏️ Editar
-                        </button>
-                        <button
-                          onClick={() => handleDeletar(venda)}
-                          style={{ background: 'var(--vermelho-erro)', color: 'var(--vermelho-texto)', border: '1px solid var(--vermelho-texto)', padding: '0.5rem 0.8rem', borderRadius: '6px', cursor: 'pointer', transition: 'all 0.2s' }}
-                          onMouseEnter={e => { e.currentTarget.style.background = 'var(--vermelho-texto)'; e.currentTarget.style.color = '#fff'; }}
-                          onMouseLeave={e => { e.currentTarget.style.background = 'var(--vermelho-erro)'; e.currentTarget.style.color = 'var(--vermelho-texto)'; }}
-                        >
-                          🗑️ Excluir
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                {vendasFiltradas.map((venda) => {
+                  const ehDireta = venda.cliente.nome.toLowerCase().includes('venda direta');
+                  return (
+                    <tr key={venda.id}>
+                      <td>{formatarData(venda.data)}</td>
+                      <td>{venda.cliente.nome}</td>
+                      <td>
+                        <span style={{
+                          background: ehDireta ? 'rgba(74,222,128,0.1)' : 'rgba(255,122,0,0.1)',
+                          color: ehDireta ? '#4ADE80' : 'var(--laranja-maloca)',
+                          border: `1px solid ${ehDireta ? '#4ADE80' : 'var(--laranja-maloca)'}`,
+                          borderRadius: '20px', padding: '0.2rem 0.7rem',
+                          fontSize: '0.8rem', fontWeight: 600
+                        }}>
+                          {ehDireta ? '🛒 Direta' : '🏪 Atacado'}
+                        </span>
+                      </td>
+                      <td style={{ color: 'var(--laranja-maloca)', fontWeight: 'bold', fontSize: '1.1rem' }}>
+                        {venda.quantidade}
+                      </td>
+                      <td style={{ color: '#4ADE80', fontWeight: 'bold' }}>
+                        {formatarMoeda(parseFloat(venda.valor))}
+                      </td>
+                      <td style={{
+                        color: parseFloat(venda.desconto) > 0 ? '#f59e0b' : 'var(--text-secondary)',
+                        fontWeight: parseFloat(venda.desconto) > 0 ? 'bold' : 'normal'
+                      }}>
+                        {parseFloat(venda.desconto || 0) > 0
+                          ? `- ${formatarMoeda(parseFloat(venda.desconto))}`
+                          : '-'}
+                      </td>
+                      <td>
+                        <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
+                          <button
+                            onClick={() => abrirEdicao(venda)}
+                            style={{
+                              background: 'var(--laranja-maloca)', color: '#fff',
+                              border: 'none', padding: '0.5rem 0.8rem',
+                              borderRadius: '6px', cursor: 'pointer', transition: 'all 0.2s'
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.background = 'var(--laranja-hover)'}
+                            onMouseLeave={e => e.currentTarget.style.background = 'var(--laranja-maloca)'}
+                          >
+                            ✏️ Editar
+                          </button>
+                          <button
+                            onClick={() => handleDeletar(venda)}
+                            style={{
+                              background: 'var(--vermelho-erro)', color: 'var(--vermelho-texto)',
+                              border: '1px solid var(--vermelho-texto)', padding: '0.5rem 0.8rem',
+                              borderRadius: '6px', cursor: 'pointer', transition: 'all 0.2s'
+                            }}
+                            onMouseEnter={e => {
+                              e.currentTarget.style.background = 'var(--vermelho-texto)';
+                              e.currentTarget.style.color = '#fff';
+                            }}
+                            onMouseLeave={e => {
+                              e.currentTarget.style.background = 'var(--vermelho-erro)';
+                              e.currentTarget.style.color = 'var(--vermelho-texto)';
+                            }}
+                          >
+                            🗑️ Excluir
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -419,18 +489,25 @@ function Relatorios() {
 
               {saboresDisponiveis.length > 0 && (
                 <div style={{ marginBottom: '1.5rem' }}>
-                  <label style={{ display: 'block', marginBottom: '0.8rem', color: 'var(--text-secondary)', fontWeight: 500 }}>
+                  <label style={{
+                    display: 'block', marginBottom: '0.8rem',
+                    color: 'var(--text-secondary)', fontWeight: 500
+                  }}>
                     🍬 Sabores
                   </label>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.8rem' }}>
                     {saboresDisponiveis.map(sabor => (
                       <div key={sabor.id} style={{
-                        background: 'var(--bg-primary)', border: `2px solid ${formEdit.sabores[sabor.id] ? 'var(--laranja-maloca)' : 'var(--border-color)'}`,
+                        background: 'var(--bg-primary)',
+                        border: `2px solid ${formEdit.sabores[sabor.id] ? 'var(--laranja-maloca)' : 'var(--border-color)'}`,
                         borderRadius: '8px', padding: '0.8rem', transition: 'all 0.2s'
                       }}>
-                        <div style={{ fontWeight: 600, fontSize: '0.9rem', marginBottom: '0.5rem' }}>{sabor.nome}</div>
+                        <div style={{ fontWeight: 600, fontSize: '0.9rem', marginBottom: '0.5rem' }}>
+                          {sabor.nome}
+                        </div>
                         <input
-                          type="number" min="0"
+                          type="number"
+                          min="0"
                           value={formEdit.sabores[sabor.id] || ''}
                           onChange={e => handleQtdSabor(sabor.id, e.target.value)}
                           placeholder="Qtd"
@@ -470,7 +547,14 @@ function Relatorios() {
 
               <div style={{ display: 'flex', gap: '1rem' }}>
                 <button type="submit" className="btn-primary">💾 Salvar</button>
-                <button type="button" onClick={() => setShowModal(false)} className="btn-secondary" style={{ flex: 1 }}>Cancelar</button>
+                <button
+                  type="button"
+                  onClick={() => setShowModal(false)}
+                  className="btn-secondary"
+                  style={{ flex: 1 }}
+                >
+                  Cancelar
+                </button>
               </div>
             </form>
           </div>
@@ -480,14 +564,21 @@ function Relatorios() {
   );
 }
 
-// Estilos inline reutilizáveis para os cards financeiros
+// Estilos dos cards financeiros
 const cardStyle = (cor) => ({
   textAlign: 'center', padding: '1rem',
   background: 'var(--bg-card)', borderRadius: '10px',
   border: `2px solid ${cor}`
 });
-const cardLabel = { color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '0.5rem' };
-const cardValue = (cor) => ({ color: cor, fontSize: '1.6rem', fontWeight: 'bold', fontFamily: 'Poppins', lineHeight: 1.2 });
-const cardSub = { color: 'var(--text-secondary)', fontSize: '0.8rem', marginTop: '0.3rem' };
+const cardLabelStyle = {
+  color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '0.5rem'
+};
+const cardValueStyle = (cor) => ({
+  color: cor, fontSize: '1.6rem', fontWeight: 'bold',
+  fontFamily: 'Poppins', lineHeight: 1.2
+});
+const cardSubStyle = {
+  color: 'var(--text-secondary)', fontSize: '0.8rem', marginTop: '0.3rem'
+};
 
 export default Relatorios;

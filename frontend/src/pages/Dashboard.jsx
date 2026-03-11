@@ -8,6 +8,7 @@ import AnaliseSabores from '../components/AnaliseSabores';
 import GerenciarSabores from '../components/GerenciarSabores';
 import Custos from '../components/Custos';
 import Producao from '../components/Producao';
+import VendaDireta from '../components/VendaDireta';
 import ThemeToggle from '../components/ThemeToggle';
 
 function Dashboard() {
@@ -26,6 +27,7 @@ function Dashboard() {
   const tabs = [
     { id: 'dashboard',      label: '📊 Dashboard' },
     { id: 'registrar',      label: '➕ Registrar Venda' },
+    { id: 'venda-direta',   label: '🛒 Venda Direta' },
     { id: 'relatorios',     label: '📄 Relatórios' },
     { id: 'producao',       label: '🏭 Produção' },
     { id: 'custos',         label: '💸 Custos' },
@@ -65,6 +67,7 @@ function Dashboard() {
 
         {activeTab === 'dashboard'      && <DashboardHome />}
         {activeTab === 'registrar'      && <RegistrarVenda />}
+        {activeTab === 'venda-direta'   && <VendaDireta />}
         {activeTab === 'relatorios'     && <Relatorios />}
         {activeTab === 'producao'       && <Producao />}
         {activeTab === 'custos'         && <Custos />}
