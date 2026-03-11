@@ -84,7 +84,7 @@ export const producaoAPI = {
   listar: (params) => api.get("/producao", { params }),
   criar: (dados) => api.post("/producao", dados),
   atualizar: (id, dados) => api.put(`/producao/${id}`, dados),
-  deleter: (id) => api.delete(`/producao/${id}`),
+  deletar: (id) => api.delete(`/producao/${id}`),
   resumo: (params) => api.get("/producao/resumo", { params }),
 };
 

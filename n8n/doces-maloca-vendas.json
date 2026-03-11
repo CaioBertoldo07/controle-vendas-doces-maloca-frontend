@@ -1,0 +1,154 @@
+{
+  "name": "Doces da Maloca - Registro de Vendas WhatsApp (Compatível)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "whatsapp-vendas",
+        "responseMode": "responseNode"
+      },
+      "id": "webhook-trigger",
+      "name": "WhatsApp Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.message }}",
+              "operation": "contains",
+              "value2": "venda"
+            }
+          ]
+        }
+      },
+      "id": "if-filter",
+      "name": "IF - É Venda?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [470, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer SUA_OPENAI_API_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={{ JSON.stringify({\n  model: \"gpt-4o-mini\",\n  messages: [\n    {\n      role: \"system\",\n      content: \"Extraia dados de vendas e responda apenas JSON válido.\"\n    },\n    {\n      role: \"user\",\n      content: `Extraia os dados desta mensagem: \\n${$json.message}`\n    }\n  ],\n  temperature: 0.1\n}) }}"
+      },
+      "id": "openai-http",
+      "name": "HTTP - OpenAI Extrair",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [690, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const content = $json.choices[0].message.content;\nlet data;\ntry {\n  data = JSON.parse(content);\n} catch (e) {\n  const clean = content.replace(/```json|```/g, '');\n  data = JSON.parse(clean);\n}\nreturn [{ json: data }];"
+      },
+      "id": "code-parse",
+      "name": "Code - Parse JSON",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [910, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://SEU_BACKEND_URL/vendas/auto",
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={{ JSON.stringify($json) }}"
+      },
+      "id": "http-backend",
+      "name": "HTTP - Registrar Venda",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [1130, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "OK"
+      },
+      "id": "webhook-response",
+      "name": "Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1350, 300]
+    }
+  ],
+  "connections": {
+    "WhatsApp Trigger": {
+      "main": [
+        [
+          {
+            "node": "IF - É Venda?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - É Venda?": {
+      "main": [
+        [
+          {
+            "node": "HTTP - OpenAI Extrair",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP - OpenAI Extrair": {
+      "main": [
+        [
+          {
+            "node": "Code - Parse JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Parse JSON": {
+      "main": [
+        [
+          {
+            "node": "HTTP - Registrar Venda",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP - Registrar Venda": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
