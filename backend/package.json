@@ -6,8 +6,8 @@
   "type": "module",
   "scripts": {
     "dev": "nodemon src/server.js",
-    "start": "npx prisma generate && npx prisma db push && node src/server.js",
-    "build": "prisma generate && prisma db push",
+    "start": "npx prisma generate && npx prisma db push --accept-data-loss && node src/server.js",
+    "build": "prisma generate && prisma db push --accept-data-loss",
     "postinstall": "prisma generate"
   },
   "keywords": [],
