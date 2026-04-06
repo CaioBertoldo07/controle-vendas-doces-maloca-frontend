@@ -223,6 +223,45 @@ export const resumoProducao = async (req, res) => {
       saldoPorSabor[nome] = { produzido, vendido, saldo: produzido - vendido }
     })
 
+    // Produção cumulativa até o fim do mês selecionado
+    const producaoCumulativa = await prisma.producaoSabor.findMany({
+      where: { producao: { data: { lte: endDate } } },
+      include: { sabor: true },
+    });
+
+    const porSaborCumulativo = {};
+    producaoCumulativa.forEach(ps => {
+      const nome = ps.sabor.nome;
+      porSaborCumulativo[nome] = (porSaborCumulativo[nome] || 0) + ps.quantidade;
+    });
+
+    // Vendas cumulativas até o fim do mês selecionado
+    const vendasCumulativas = await prisma.vendaSabor.findMany({
+      where: { venda: { data: { lte: endDate } } },
+      include: { sabor: true },
+    });
+
+    const vendidoPorSaborCumulativo = {};
+    vendasCumulativas.forEach(vs => {
+      const nome = vs.sabor.nome;
+      vendidoPorSaborCumulativo[nome] = (vendidoPorSaborCumulativo[nome] || 0) + vs.quantidade;
+    });
+
+    const todosSaboresCumulativo = new Set([
+      ...Object.keys(porSaborCumulativo),
+      ...Object.keys(vendidoPorSaborCumulativo),
+    ]);
+
+    const saldoPorSaborCumulativo = {};
+    todosSaboresCumulativo.forEach(nome => {
+      const produzido = porSaborCumulativo[nome] || 0;
+      const vendido = vendidoPorSaborCumulativo[nome] || 0;
+      saldoPorSaborCumulativo[nome] = { produzido, vendido, saldo: produzido - vendido };
+    });
+
+    const saldoEstoqueCumulativo = Object.values(saldoPorSaborCumulativo)
+      .reduce((s, d) => s + d.saldo, 0);
+
     res.json({
       totalHoje,
       totalSemana,
@@ -232,6 +271,8 @@ export const resumoProducao = async (req, res) => {
       porSabor,
       vendidoPorSabor,
       saldoPorSabor,
+      saldoPorSaborCumulativo,
+      saldoEstoqueCumulativo,
       registros: producaoMes,
       meses,
     });

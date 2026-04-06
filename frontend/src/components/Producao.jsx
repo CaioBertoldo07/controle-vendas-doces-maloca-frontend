@@ -175,14 +175,14 @@ export default function Producao() {
       )}
 
       {/* Saldo por sabor */}
-      {resumo && resumo.saldoPorSabor && Object.keys(resumo.saldoPorSabor).length > 0 && (
+      {resumo && resumo.saldoPorSaborCumulativo && Object.keys(resumo.saldoPorSaborCumulativo).length > 0 && (
         <div className="card" style={{ marginBottom:'1.5rem' }}>
           <h2>📦 Saldo Estimado por Sabor</h2>
           <p style={{ color:'var(--text-secondary)', fontSize:'0.9rem', marginBottom:'1.2rem' }}>
-            Produção − Vendas do mês
+            Produção acumulada − Vendas acumuladas
           </p>
           <div style={{ display:'flex', flexDirection:'column', gap:'0.8rem' }}>
-            {Object.entries(resumo.saldoPorSabor).map(([nome, dados], i) => {
+            {Object.entries(resumo.saldoPorSaborCumulativo).map(([nome, dados], i) => {
               const cor = dados.saldo >= 0 ? '#4ade80' : '#ff6b6b';
               const porcentagem = dados.produzido > 0
                 ? Math.min((dados.vendido / dados.produzido) * 100, 100)
@@ -221,13 +221,13 @@ export default function Producao() {
           {/* Total geral */}
           <div style={{
             marginTop:'1rem', padding:'0.8rem 1.2rem', borderRadius:'12px',
-            background: resumo.saldoEstoque >= 0 ? '#1a4d2e' : '#4d1a1a',
-            border: `1px solid ${resumo.saldoEstoque >= 0 ? '#4ade80' : '#ff6b6b'}`,
+            background: resumo.saldoEstoqueCumulativo >= 0 ? '#1a4d2e' : '#4d1a1a',
+            border: `1px solid ${resumo.saldoEstoqueCumulativo >= 0 ? '#4ade80' : '#ff6b6b'}`,
             display:'flex', justifyContent:'space-between', alignItems:'center'
           }}>
             <span style={{ fontWeight:600 }}>Saldo Total</span>
-            <span style={{ color: resumo.saldoEstoque >= 0 ? '#4ade80' : '#ff6b6b', fontWeight:'bold', fontSize:'1.3rem' }}>
-              {resumo.saldoEstoque >= 0 ? '+' : ''}{resumo.saldoEstoque} cocadas
+            <span style={{ color: resumo.saldoEstoqueCumulativo >= 0 ? '#4ade80' : '#ff6b6b', fontWeight:'bold', fontSize:'1.3rem' }}>
+              {resumo.saldoEstoqueCumulativo >= 0 ? '+' : ''}{resumo.saldoEstoqueCumulativo} cocadas
             </span>
           </div>
         </div>
