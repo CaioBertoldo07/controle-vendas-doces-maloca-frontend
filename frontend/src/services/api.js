@@ -59,6 +59,8 @@ export const saboresAPI = {
   criar: (nome, precoUnitario) => api.post("/sabores", { nome, precoUnitario }),
   atualizar: (id, dados) => api.put(`/sabores/${id}`, dados),
   deletar: (id) => api.delete(`/sabores/${id}`),
+  listarReceita: (id) => api.get(`/sabores/${id}/receita`),
+  salvarReceita: (id, dados) => api.put(`/sabores/${id}/receita`, dados),
 };
 
 export const vendasAPI = {
@@ -86,6 +88,18 @@ export const producaoAPI = {
   atualizar: (id, dados) => api.put(`/producao/${id}`, dados),
   deletar: (id) => api.delete(`/producao/${id}`),
   resumo: (params) => api.get("/producao/resumo", { params }),
+};
+
+export const materiasPrimasAPI = {
+  listar: (params) => api.get("/materias-primas", { params }),
+  criar: (dados) => api.post("/materias-primas", dados),
+  atualizar: (id, dados) => api.put(`/materias-primas/${id}`, dados),
+  deletar: (id) => api.delete(`/materias-primas/${id}`),
+  resumo: () => api.get("/materias-primas/resumo"),
+};
+
+export const estoqueAPI = {
+  listar: () => api.get("/estoque"),
 };
 
 export default api;

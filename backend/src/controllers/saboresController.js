@@ -143,3 +143,65 @@ export const deletarSabor = async (req, res) => {
     res.status(500).json({ error: "Erro ao deletar sabor: " + error.message });
   }
 };
+
+export const listarReceita = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const sabor = await prisma.sabor.findUnique({ where: { id: parseInt(id) } });
+    if (!sabor) return res.status(404).json({ error: "Sabor não encontrado" });
+
+    const itens = await prisma.receitaItem.findMany({
+      where: { saborId: parseInt(id) },
+      include: { materiaPrima: true },
+      orderBy: { id: "asc" },
+    });
+
+    res.json({ rendimentoBase: sabor.rendimentoBase, itens });
+  } catch (error) {
+    res.status(500).json({ error: "Erro ao buscar receita" });
+  }
+};
+
+export const salvarReceita = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { rendimentoBase, itens } = req.body;
+
+    if (!rendimentoBase || parseInt(rendimentoBase) <= 0) {
+      return res.status(400).json({ error: "Rendimento base inválido" });
+    }
+
+    const sabor = await prisma.sabor.findUnique({ where: { id: parseInt(id) } });
+    if (!sabor) return res.status(404).json({ error: "Sabor não encontrado" });
+
+    await prisma.$transaction(async (tx) => {
+      await tx.sabor.update({
+        where: { id: parseInt(id) },
+        data: { rendimentoBase: parseInt(rendimentoBase) },
+      });
+
+      await tx.receitaItem.deleteMany({ where: { saborId: parseInt(id) } });
+
+      if (itens && itens.length > 0) {
+        await tx.receitaItem.createMany({
+          data: itens.map((item) => ({
+            saborId: parseInt(id),
+            materiaPrimaId: parseInt(item.materiaPrimaId),
+            quantidadeBase: parseFloat(item.quantidadeBase),
+          })),
+        });
+      }
+    });
+
+    const itensAtualizados = await prisma.receitaItem.findMany({
+      where: { saborId: parseInt(id) },
+      include: { materiaPrima: true },
+      orderBy: { id: "asc" },
+    });
+    const saborAtualizado = await prisma.sabor.findUnique({ where: { id: parseInt(id) } });
+
+    res.json({ rendimentoBase: saborAtualizado.rendimentoBase, itens: itensAtualizados });
+  } catch (error) {
+    res.status(500).json({ error: "Erro ao salvar receita: " + error.message });
+  }
+};

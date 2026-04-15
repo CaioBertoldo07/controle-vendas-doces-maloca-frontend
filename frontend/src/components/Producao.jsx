@@ -33,6 +33,7 @@ export default function Producao() {
   const [filtros, setFiltros] = useState({ mes: mesAtual, ano: anoAtual });
   const [form, setForm] = useState({ data: hojeFormatado(), observacao: '', sabores: {} });
   const [msg, setMsg] = useState({ text: '', type: '' });
+  const [faltantes, setFaltantes] = useState([]);
 
   useEffect(() => { carregar(); }, [filtros]);
   useEffect(() => { carregarSabores(); }, []);
@@ -53,7 +54,9 @@ export default function Producao() {
     try {
       const response = await saboresAPI.listar();
       setSaboresDisponiveis(response.data);
-    } catch {}
+    } catch {
+      showMsg('Erro ao carregar sabores', 'error');
+    }
   };
 
   const showMsg = (text, type = 'success') => {
@@ -105,6 +108,7 @@ export default function Producao() {
       saborId: parseInt(saborId), quantidade
     }));
 
+    setFaltantes([]);
     try {
       const payload = { data: dataIso, observacao: form.observacao, sabores: saboresArray };
       if (editando) {
@@ -117,7 +121,13 @@ export default function Producao() {
       setShowModal(false);
       carregar();
     } catch (err) {
-      showMsg('❌ ' + (err.response?.data?.error || 'Erro ao salvar'), 'error');
+      const data = err.response?.data;
+      if (data?.faltantes) {
+        setFaltantes(data.faltantes);
+        showMsg('❌ ' + data.error, 'error');
+      } else {
+        showMsg('❌ ' + (data?.error || 'Erro ao salvar'), 'error');
+      }
     }
   };
 
@@ -182,7 +192,7 @@ export default function Producao() {
             Produção acumulada − Vendas acumuladas
           </p>
           <div style={{ display:'flex', flexDirection:'column', gap:'0.8rem' }}>
-            {Object.entries(resumo.saldoPorSaborCumulativo).map(([nome, dados], i) => {
+            {Object.entries(resumo.saldoPorSaborCumulativo).map(([nome, dados]) => {
               const cor = dados.saldo >= 0 ? '#4ade80' : '#ff6b6b';
               const porcentagem = dados.produzido > 0
                 ? Math.min((dados.vendido / dados.produzido) * 100, 100)
@@ -424,11 +434,20 @@ export default function Producao() {
                 />
               </div>
 
+              {faltantes.length > 0 && (
+                <div style={{ background: 'var(--vermelho-erro)', border: '1px solid var(--vermelho-texto)', borderRadius: '8px', padding: '0.75rem 1rem', marginBottom: '1rem' }}>
+                  <strong style={{ color: 'var(--vermelho-texto)' }}>⚠️ Estoque insuficiente:</strong>
+                  <ul style={{ margin: '0.5rem 0 0 1rem', color: 'var(--vermelho-texto)', fontSize: '0.9rem' }}>
+                    {faltantes.map((f, i) => <li key={i}>{f}</li>)}
+                  </ul>
+                </div>
+              )}
+
               <div style={{ display:'flex', gap:'1rem' }}>
                 <button type="submit" className="btn-primary" disabled={totalSelecionado === 0}>
                   {editando ? '💾 Atualizar' : '✨ Registrar'}
                 </button>
-                <button type="button" onClick={() => setShowModal(false)} className="btn-secondary" style={{ flex:1 }}>
+                <button type="button" onClick={() => { setShowModal(false); setFaltantes([]); }} className="btn-secondary" style={{ flex:1 }}>
                   Cancelar
                 </button>
               </div>

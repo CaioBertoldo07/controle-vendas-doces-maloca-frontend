@@ -7,6 +7,8 @@ import vendasRoutes from "./routes/vendas.js";
 import saboresRoutes from "./routes/sabores.js";
 import custosRoutes from "./routes/custos.js";
 import producaoRoutes from "./routes/producao.js";
+import materiasPrimasRoutes from "./routes/materiasPrimas.js";
+import estoqueRoutes from "./routes/estoque.js";
 import { verificarAuth } from "./middlewares/auth.js";
 
 dotenv.config();
@@ -33,6 +35,8 @@ app.use("/api/vendas", verificarAuth, vendasRoutes);
 app.use("/api/sabores", verificarAuth, saboresRoutes);
 app.use("/api/custos", verificarAuth, custosRoutes);
 app.use("/api/producao", verificarAuth, producaoRoutes);
+app.use("/api/materias-primas", verificarAuth, materiasPrimasRoutes);
+app.use("/api/estoque", verificarAuth, estoqueRoutes);
 
 // Rota de teste
 app.get("/", (req, res) => {

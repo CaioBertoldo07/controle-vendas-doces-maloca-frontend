@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { custosAPI } from '../services/api';
+import { custosAPI, materiasPrimasAPI } from '../services/api';
 
 const CATEGORIAS = ['Matéria Prima', 'Embalagem', 'Equipamento', 'Outros'];
 const UNIDADES   = ['kg', 'g', 'L', 'ml', 'un', 'cx', 'pct', 'saco'];
@@ -33,11 +33,12 @@ const anoAtual = new Date().getFullYear();
 export default function Custos() {
   const [custos, setCustos] = useState([]);
   const [resumo, setResumo] = useState(null);
+  const [materiasPrimas, setMateriasPrimas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editando, setEditando] = useState(null);
   const [filtros, setFiltros] = useState({ mes: mesAtual, ano: anoAtual, categoria: '' });
-  const [form, setForm] = useState({ nome:'', categoria:'Matéria Prima', quantidade:'', unidade:'kg', valorTotal:'', data: hojeFormatado(), observacao:'' });
+  const [form, setForm] = useState({ nome:'', categoria:'Matéria Prima', quantidade:'', unidade:'kg', valorTotal:'', data: hojeFormatado(), observacao:'', materiaPrimaId:'' });
   const [msg, setMsg] = useState({ text:'', type:'' });
 
   useEffect(() => { carregar(); }, [filtros]);
@@ -50,14 +51,16 @@ export default function Custos() {
       if (filtros.ano) params.ano = filtros.ano;
       if (filtros.categoria) params.categoria = filtros.categoria;
 
-      const [custosRes, resumoRes] = await Promise.all([
+      const [custosRes, resumoRes, mpRes] = await Promise.all([
         custosAPI.listar(params),
         custosAPI.resumo({ mes: filtros.mes, ano: filtros.ano }),
+        materiasPrimasAPI.listar(),
       ]);
       setCustos(custosRes.data);
       setResumo(resumoRes.data);
+      setMateriasPrimas(mpRes.data);
     } catch (e) {
-      showMsg('Erro ao carregar custos', 'error');
+      showMsg('Erro ao carregar custos', e.response?.data?.error ? 'error' : 'success');
     } finally {
       setLoading(false);
     }
@@ -82,10 +85,11 @@ export default function Custos() {
         valorTotal: parseFloat(custo.valorTotal).toFixed(2),
         data: `${dia}/${mes}/${ano}`,
         observacao: custo.observacao || '',
+        materiaPrimaId: custo.materiaPrimaId ? String(custo.materiaPrimaId) : '',
       });
     } else {
       setEditando(null);
-      setForm({ nome:'', categoria:'Matéria Prima', quantidade:'', unidade:'kg', valorTotal:'', data: hojeFormatado(), observacao:'' });
+      setForm({ nome:'', categoria:'Matéria Prima', quantidade:'', unidade:'kg', valorTotal:'', data: hojeFormatado(), observacao:'', materiaPrimaId:'' });
     }
     setShowModal(true);
   };
@@ -103,8 +107,15 @@ export default function Custos() {
     const dataIso = brParaIso(form.data);
     if (!dataIso) { showMsg('Data inválida', 'error'); return; }
 
+    const payload = {
+      ...form,
+      data: dataIso,
+      quantidade: parseFloat(form.quantidade),
+      valorTotal: parseFloat(form.valorTotal),
+      materiaPrimaId: form.materiaPrimaId ? parseInt(form.materiaPrimaId) : null,
+    };
+
     try {
-      const payload = { ...form, data: dataIso, quantidade: parseFloat(form.quantidade), valorTotal: parseFloat(form.valorTotal) };
       if (editando) {
         await custosAPI.atualizar(editando, payload);
         showMsg('✅ Custo atualizado!');
@@ -219,6 +230,7 @@ export default function Custos() {
                   <th>Nome</th>
                   <th>Categoria</th>
                   <th>Quantidade</th>
+                  <th>Matéria-Prima</th>
                   <th>Valor Total</th>
                   <th style={{ textAlign:'center' }}>Ações</th>
                 </tr>
@@ -230,6 +242,9 @@ export default function Custos() {
                     <td style={{ fontWeight:500 }}>{c.nome}</td>
                     <td><span className="badge" style={{ background:'var(--bg-primary)', color:'var(--text-secondary)', border:'1px solid var(--border-color)' }}>{CAT_ICONS[c.categoria]} {c.categoria}</span></td>
                     <td>{c.quantidade} {c.unidade}</td>
+                    <td style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                      {c.materiaPrima ? <span style={{ color: 'var(--laranja-maloca)' }}>🔗 {c.materiaPrima.nome}</span> : '—'}
+                    </td>
                     <td style={{ color:'#f59e0b', fontWeight:'bold' }}>{formatarMoeda(parseFloat(c.valorTotal))}</td>
                     <td>
                       <div style={{ display:'flex', gap:'0.5rem', justifyContent:'center' }}>
@@ -248,7 +263,7 @@ export default function Custos() {
       {/* Modal */}
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
-          <div className="modal-content" style={{ maxWidth:520 }} onClick={e => e.stopPropagation()}>
+          <div className="modal-content" style={{ maxWidth:560 }} onClick={e => e.stopPropagation()}>
             <h3>{editando ? '✏️ Editar Custo' : '💸 Novo Custo'}</h3>
             <form onSubmit={handleSubmit}>
               <div className="form-group">
@@ -258,7 +273,7 @@ export default function Custos() {
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'1rem' }}>
                 <div className="form-group">
                   <label>Categoria</label>
-                  <select value={form.categoria} onChange={e => setForm({...form, categoria:e.target.value})}>
+                  <select value={form.categoria} onChange={e => setForm({...form, categoria:e.target.value, materiaPrimaId:''})}>
                     {CATEGORIAS.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
                 </div>
@@ -267,6 +282,23 @@ export default function Custos() {
                   <input type="text" value={form.data} onChange={handleDataChange} placeholder="DD/MM/AAAA" maxLength={10} required />
                 </div>
               </div>
+
+              {/* Vínculo com matéria-prima — visível apenas na categoria Matéria Prima */}
+              {form.categoria === 'Matéria Prima' && (
+                <div className="form-group">
+                  <label>Matéria-Prima vinculada</label>
+                  <select value={form.materiaPrimaId} onChange={e => setForm({...form, materiaPrimaId: e.target.value})}>
+                    <option value="">— Sem vínculo —</option>
+                    {materiasPrimas.map(mp => (
+                      <option key={mp.id} value={mp.id}>{mp.nome} ({mp.unidadeBase})</option>
+                    ))}
+                  </select>
+                  <small style={{ color:'var(--text-secondary)', marginTop:'0.3rem', display:'block' }}>
+                    Ao vincular, esta compra somará ao saldo do insumo automaticamente.
+                  </small>
+                </div>
+              )}
+
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'1rem' }}>
                 <div className="form-group">
                   <label>Quantidade *</label>
