@@ -5,23 +5,19 @@ import { useTheme } from '../context/ThemeContext';
 import './Login.css';
 
 function Login() {
-  const [modo, setModo] = useState('login');
   const [formData, setFormData] = useState({
-    nome: '',
     email: '',
     senha: ''
   });
   const [erro, setErro] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const { login, registro, usuario } = useAuth();
+  const { login, usuario } = useAuth();
   const { isDarkMode, toggleTheme } = useTheme();
   const navigate = useNavigate();
 
-  // Redirecionar se já estiver logado
   useEffect(() => {
     if (usuario) {
-      console.log('✅ Usuário já logado, redirecionando...');
       navigate('/');
     }
   }, [usuario, navigate]);
@@ -31,20 +27,9 @@ function Login() {
     setErro('');
     setLoading(true);
 
-    console.log('🔐 Tentando login...', { email: formData.email });
-
     try {
-      if (modo === 'login') {
-        await login(formData.email, formData.senha);
-        console.log('✅ Login bem-sucedido, redirecionando...');
-      } else {
-        await registro(formData.nome, formData.email, formData.senha);
-        console.log('✅ Registro bem-sucedido, redirecionando...');
-      }
+      await login(formData.email, formData.senha);
     } catch (error) {
-      console.error('❌ Erro no login:', error);
-      console.error('Resposta do servidor:', error.response?.data);
-      
       const mensagemErro = error.response?.data?.error || 'Erro ao fazer login. Verifique suas credenciais.';
       setErro(mensagemErro);
       setLoading(false);
@@ -53,7 +38,6 @@ function Login() {
 
   return (
     <div className="login-container">
-      {/* Toggle de Tema */}
       <div className="login-theme-toggle" onClick={toggleTheme}>
         <div className={`theme-toggle-switch ${isDarkMode ? 'active' : ''}`}>
           <div className={`theme-toggle-slider ${isDarkMode ? 'active' : ''}`}>
@@ -68,41 +52,7 @@ function Login() {
           <p>Sistema de Controle de Vendas</p>
         </div>
 
-        <div className="login-tabs">
-          <button
-            className={modo === 'login' ? 'active' : ''}
-            onClick={() => {
-              setModo('login');
-              setErro('');
-            }}
-          >
-            Login
-          </button>
-          <button
-            className={modo === 'registro' ? 'active' : ''}
-            onClick={() => {
-              setModo('registro');
-              setErro('');
-            }}
-          >
-            Criar Conta
-          </button>
-        </div>
-
         <form onSubmit={handleSubmit}>
-          {modo === 'registro' && (
-            <div className="form-group">
-              <label>Nome Completo</label>
-              <input
-                type="text"
-                value={formData.nome}
-                onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
-                required
-                placeholder="Seu nome completo"
-              />
-            </div>
-          )}
-
           <div className="form-group">
             <label>Email</label>
             <input
@@ -135,17 +85,9 @@ function Login() {
           )}
 
           <button type="submit" className="btn-primary" disabled={loading}>
-            {loading ? '⏳ Entrando...' : modo === 'login' ? '🔐 Entrar' : '✨ Criar Conta'}
+            {loading ? '⏳ Entrando...' : '🔐 Entrar'}
           </button>
         </form>
-
-        {modo === 'login' && (
-          <div className="login-info">
-            <p>👤 Credenciais de teste:</p>
-            <p><strong>Email:</strong> admin@docesmaloca.com</p>
-            <p><strong>Senha:</strong> 123456</p>
-          </div>
-        )}
       </div>
     </div>
   );

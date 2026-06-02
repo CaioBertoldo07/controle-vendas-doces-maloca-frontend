@@ -4,9 +4,6 @@ import { verificarAuth } from "../middlewares/auth.js";
 
 const router = express.Router();
 
-// POST /api/auth/registro - Criar nova conta
-router.post("/registro", authController.registro);
-
 // POST /api/auth/login - Fazer login
 router.post("/login", authController.login);
 
