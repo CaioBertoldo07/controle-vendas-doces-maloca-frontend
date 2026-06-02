@@ -79,6 +79,13 @@ body {
   color-scheme: light;
 }
 
+[data-theme="dark"] select,
+[data-theme="dark"] option {
+  color-scheme: dark;
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
 h1, h2, h3, h4, h5, h6 {
   font-family: 'Poppins', sans-serif;
 }

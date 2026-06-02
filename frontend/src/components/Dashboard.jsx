@@ -56,10 +56,11 @@ function Dashboard() {
               padding: '0.4rem 0.8rem',
               borderRadius: '8px',
               border: '1px solid var(--border-color)',
-              background: 'var(--card-bg)',
+              background: 'var(--bg-card)',
               color: 'var(--text-primary)',
               fontSize: '0.95rem',
               cursor: 'pointer',
+              colorScheme: 'inherit',
             }}
           >
             {MESES.map((nome, i) => (
@@ -73,10 +74,11 @@ function Dashboard() {
               padding: '0.4rem 0.8rem',
               borderRadius: '8px',
               border: '1px solid var(--border-color)',
-              background: 'var(--card-bg)',
+              background: 'var(--bg-card)',
               color: 'var(--text-primary)',
               fontSize: '0.95rem',
               cursor: 'pointer',
+              colorScheme: 'inherit',
             }}
           >
             {anosDisponiveis.map((ano) => (
