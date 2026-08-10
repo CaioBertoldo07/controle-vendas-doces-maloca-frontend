@@ -8,6 +8,15 @@ function hojeFormatado() {
   return `${dia}/${mes}/${hoje.getFullYear()}`;
 }
 
+// Anexa o horário atual à data escolhida, para registrar a hora da venda
+function comHoraAtual(dataIso) {
+  const agora = new Date();
+  const hh = String(agora.getHours()).padStart(2, '0');
+  const mm = String(agora.getMinutes()).padStart(2, '0');
+  const ss = String(agora.getSeconds()).padStart(2, '0');
+  return `${dataIso}T${hh}:${mm}:${ss}.000Z`;
+}
+
 function VendaDireta() {
   const [saboresDisponiveis, setSaboresDisponiveis] = useState([]);
   const [clienteVendaDireta, setClienteVendaDireta] = useState(null);
@@ -117,7 +126,7 @@ function VendaDireta() {
         quantidade: quantidadeTotal,
         valor: valorTotal,
         desconto: 0,
-        data: dataIso,
+        data: comHoraAtual(dataIso),
         sabores: saboresArray,
         ...(obsCompleta && { observacao: obsCompleta })
       });

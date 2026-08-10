@@ -237,7 +237,7 @@ export const buscarVenda = async (req, res) => {
 export const atualizarVenda = async (req, res) => {
   try {
     const { id } = req.params;
-    const { clienteId, quantidade, valor, data, sabores } = req.body;
+    const { clienteId, quantidade, valor, desconto, data, sabores } = req.body;
 
     const vendaExiste = await prisma.venda.findUnique({
       where: { id: parseInt(id) },
@@ -259,6 +259,8 @@ export const atualizarVenda = async (req, res) => {
         ...(clienteId && { clienteId: parseInt(clienteId) }),
         ...(quantidade && { quantidade: parseInt(quantidade) }),
         ...(valor && { valor: parseFloat(valor) }),
+        // desconto usa checagem explícita: 0 é um valor válido (remover o desconto)
+        ...(desconto !== undefined && { desconto: parseFloat(desconto) || 0 }),
         ...(data && { data: new Date(data) }),
         ...(sabores && {
           sabores: {

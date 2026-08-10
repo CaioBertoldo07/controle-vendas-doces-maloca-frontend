@@ -20,11 +20,15 @@ function Relatorios() {
   const [formEdit, setFormEdit] = useState({
     clienteId: '',
     data: '',
+    hora: '',
     valor: '',
     desconto: '',
     sabores: {}
   });
   const [msg, setMsg] = useState({ text: '', type: '' });
+
+  // Modal de visualização
+  const [vendoVenda, setVendoVenda] = useState(null);
 
   useEffect(() => { carregarClientes(); }, []);
   useEffect(() => { carregarVendas(); }, [filtros.mes, filtros.ano, filtros.clienteId]);
@@ -115,6 +119,7 @@ function Relatorios() {
     setFormEdit({
       clienteId: String(venda.clienteId),
       data: `${dia}/${mes}/${ano}`,
+      hora: extrairHora(venda.data) || '',
       valor: parseFloat(venda.valor).toFixed(2),
       desconto: parseFloat(venda.desconto || 0).toFixed(2),
       sabores: saboresForm
@@ -130,6 +135,13 @@ function Relatorios() {
     setFormEdit({ ...formEdit, data: v });
   };
 
+  const handleHoraEditChange = (e) => {
+    let v = e.target.value.replace(/\D/g, '');
+    if (v.length > 2) v = v.slice(0, 2) + ':' + v.slice(2);
+    if (v.length > 5) v = v.slice(0, 5);
+    setFormEdit({ ...formEdit, hora: v });
+  };
+
   const handleQtdSabor = (saborId, qtd) => {
     const q = parseInt(qtd) || 0;
     const novo = { ...formEdit.sabores };
@@ -142,7 +154,18 @@ function Relatorios() {
     e.preventDefault();
     const [dia, mes, ano] = formEdit.data.split('/');
     if (!dia || !mes || !ano) { showMsg('❌ Data inválida', 'error'); return; }
-    const dataIso = `${ano}-${mes.padStart(2, '0')}-${dia.padStart(2, '0')}`;
+
+    // Horário: mantém o registrado se não for alterado; vazio = sem horário (00:00)
+    let hora = '00:00:00.000Z';
+    if (formEdit.hora) {
+      const [hh, mm] = formEdit.hora.split(':');
+      if (hh === undefined || mm === undefined || +hh > 23 || +mm > 59) {
+        showMsg('❌ Horário inválido. Use HH:MM', 'error');
+        return;
+      }
+      hora = `${hh.padStart(2, '0')}:${mm.padStart(2, '0')}:00.000Z`;
+    }
+    const dataIso = `${ano}-${mes.padStart(2, '0')}-${dia.padStart(2, '0')}T${hora}`;
 
     const saboresArray = Object.entries(formEdit.sabores).map(([saborId, quantidade]) => ({
       saborId: parseInt(saborId), quantidade
@@ -167,20 +190,34 @@ function Relatorios() {
   };
 
   // ===== HELPERS =====
+  const toIso = (data) =>
+    typeof data === 'string' ? data : new Date(data).toISOString();
+
   const formatarData = (data) => {
-    const isoStr = typeof data === 'string' ? data : new Date(data).toISOString();
-    const [datePart] = isoStr.split('T');
+    const [datePart] = toIso(data).split('T');
     const [ano, mes, dia] = datePart.split('-');
     return `${dia}/${mes}/${ano}`;
   };
+
+  // Vendas antigas foram gravadas sem horário (00:00:00) — nesses casos não há hora a exibir
+  const extrairHora = (data) => {
+    const [, timePart] = toIso(data).split('T');
+    if (!timePart) return null;
+    const [hh, mm, resto = '00'] = timePart.split(':');
+    if (hh === '00' && mm === '00' && resto.slice(0, 2) === '00') return null;
+    return `${hh}:${mm}`;
+  };
+
+  const formatarHora = (data) => extrairHora(data) || '—';
 
   const formatarMoeda = (valor) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor);
 
   const exportarCSV = () => {
-    const headers = ['Data', 'Cliente', 'Tipo', 'Quantidade', 'Valor', 'Desconto'];
+    const headers = ['Data', 'Hora', 'Cliente', 'Tipo', 'Quantidade', 'Valor', 'Desconto'];
     const rows = vendasFiltradas.map(v => [
       formatarData(v.data),
+      extrairHora(v.data) || '',
       v.cliente.nome,
       v.cliente.nome.toLowerCase().includes('venda direta') ? 'Direta' : 'Atacado',
       v.quantidade,
@@ -370,6 +407,7 @@ function Relatorios() {
               <thead>
                 <tr>
                   <th>Data</th>
+                  <th>Hora</th>
                   <th>Cliente</th>
                   <th>Tipo</th>
                   <th>Qtd</th>
@@ -384,6 +422,12 @@ function Relatorios() {
                   return (
                     <tr key={venda.id}>
                       <td>{formatarData(venda.data)}</td>
+                      <td style={{
+                        color: extrairHora(venda.data) ? 'var(--text-primary)' : 'var(--text-secondary)',
+                        whiteSpace: 'nowrap'
+                      }}>
+                        {formatarHora(venda.data)}
+                      </td>
                       <td>{venda.cliente.nome}</td>
                       <td>
                         <span style={{
@@ -412,6 +456,25 @@ function Relatorios() {
                       </td>
                       <td>
                         <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
+                          <button
+                            onClick={() => setVendoVenda(venda)}
+                            title="Visualizar venda"
+                            style={{
+                              background: 'transparent', color: 'var(--text-primary)',
+                              border: '1px solid var(--border-color)', padding: '0.5rem 0.8rem',
+                              borderRadius: '6px', cursor: 'pointer', transition: 'all 0.2s'
+                            }}
+                            onMouseEnter={e => {
+                              e.currentTarget.style.borderColor = 'var(--laranja-maloca)';
+                              e.currentTarget.style.color = 'var(--laranja-maloca)';
+                            }}
+                            onMouseLeave={e => {
+                              e.currentTarget.style.borderColor = 'var(--border-color)';
+                              e.currentTarget.style.color = 'var(--text-primary)';
+                            }}
+                          >
+                            👁️ Ver
+                          </button>
                           <button
                             onClick={() => abrirEdicao(venda)}
                             style={{
@@ -453,6 +516,128 @@ function Relatorios() {
         )}
       </div>
 
+      {/* Modal de visualização */}
+      {vendoVenda && (
+        <div className="modal-overlay" onClick={() => setVendoVenda(null)}>
+          <div
+            className="modal-content"
+            style={{ maxWidth: 520, maxHeight: '90vh', overflowY: 'auto' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <h3>🧾 Detalhes da Venda</h3>
+
+            <div style={{
+              display: 'grid', gridTemplateColumns: '1fr 1fr',
+              gap: '0.8rem', marginBottom: '1.2rem'
+            }}>
+              <InfoBox label="📅 Data" valor={formatarData(vendoVenda.data)} />
+              <InfoBox label="🕐 Horário" valor={formatarHora(vendoVenda.data)} />
+              <InfoBox
+                label="👤 Cliente"
+                valor={vendoVenda.cliente.nome}
+                span
+              />
+              <InfoBox
+                label="🏷️ Tipo"
+                valor={vendoVenda.cliente.nome.toLowerCase().includes('venda direta') ? '🛒 Venda Direta' : '🏪 Atacado'}
+              />
+              <InfoBox
+                label="📦 Quantidade"
+                valor={`${vendoVenda.quantidade} unidades`}
+                cor="var(--laranja-maloca)"
+              />
+            </div>
+
+            {/* Sabores */}
+            <div style={{ marginBottom: '1.2rem' }}>
+              <div style={{
+                color: 'var(--text-secondary)', fontSize: '0.85rem',
+                fontWeight: 600, marginBottom: '0.6rem'
+              }}>
+                🍬 Sabores
+              </div>
+              {vendoVenda.sabores?.length > 0 ? (
+                <div style={{
+                  border: '1px solid var(--border-color)', borderRadius: '10px',
+                  overflow: 'hidden'
+                }}>
+                  {vendoVenda.sabores.map((vs, i) => (
+                    <div key={vs.id ?? i} style={{
+                      display: 'flex', justifyContent: 'space-between',
+                      padding: '0.6rem 0.9rem',
+                      background: 'var(--bg-primary)',
+                      borderTop: i === 0 ? 'none' : '1px solid var(--border-color)'
+                    }}>
+                      <span>{vs.sabor?.nome || `Sabor #${vs.saborId}`}</span>
+                      <strong style={{ color: 'var(--laranja-maloca)' }}>
+                        {vs.quantidade} un
+                      </strong>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                  Nenhum sabor detalhado nesta venda
+                </div>
+              )}
+            </div>
+
+            {/* Valores */}
+            <div style={{
+              background: 'var(--bg-primary)', border: '1px solid var(--border-color)',
+              borderRadius: '10px', padding: '0.9rem 1.1rem', marginBottom: '1.2rem'
+            }}>
+              <LinhaValor
+                label="Valor bruto"
+                valor={formatarMoeda(parseFloat(vendoVenda.valor) + parseFloat(vendoVenda.desconto || 0))}
+              />
+              <LinhaValor
+                label="Desconto"
+                valor={parseFloat(vendoVenda.desconto || 0) > 0
+                  ? `- ${formatarMoeda(parseFloat(vendoVenda.desconto))}`
+                  : '—'}
+                cor={parseFloat(vendoVenda.desconto || 0) > 0 ? '#f59e0b' : 'var(--text-secondary)'}
+              />
+              <div style={{ borderTop: '1px solid var(--border-color)', margin: '0.6rem 0' }} />
+              <LinhaValor
+                label="Valor final"
+                valor={formatarMoeda(parseFloat(vendoVenda.valor))}
+                cor="#4ADE80"
+                destaque
+              />
+            </div>
+
+            <div style={{
+              color: 'var(--text-secondary)', fontSize: '0.75rem', marginBottom: '1rem'
+            }}>
+              ID da venda: #{vendoVenda.id}
+            </div>
+
+            <div style={{ display: 'flex', gap: '1rem' }}>
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={() => {
+                  const venda = vendoVenda;
+                  setVendoVenda(null);
+                  abrirEdicao(venda);
+                }}
+              >
+                ✏️ Editar
+              </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                style={{ flex: 1 }}
+                onClick={() => setVendoVenda(null)}
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal de edição */}
       {showModal && editando && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
@@ -475,16 +660,28 @@ function Relatorios() {
                 </select>
               </div>
 
-              <div className="form-group">
-                <label>Data *</label>
-                <input
-                  type="text"
-                  value={formEdit.data}
-                  onChange={handleDataEditChange}
-                  placeholder="DD/MM/AAAA"
-                  maxLength={10}
-                  required
-                />
+              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1rem' }}>
+                <div className="form-group">
+                  <label>Data *</label>
+                  <input
+                    type="text"
+                    value={formEdit.data}
+                    onChange={handleDataEditChange}
+                    placeholder="DD/MM/AAAA"
+                    maxLength={10}
+                    required
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Hora</label>
+                  <input
+                    type="text"
+                    value={formEdit.hora}
+                    onChange={handleHoraEditChange}
+                    placeholder="HH:MM"
+                    maxLength={5}
+                  />
+                </div>
               </div>
 
               {saboresDisponiveis.length > 0 && (
@@ -560,6 +757,46 @@ function Relatorios() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// Blocos do modal de visualização
+function InfoBox({ label, valor, cor, span }) {
+  return (
+    <div style={{
+      background: 'var(--bg-primary)', border: '1px solid var(--border-color)',
+      borderRadius: '10px', padding: '0.7rem 0.9rem',
+      gridColumn: span ? '1 / -1' : undefined
+    }}>
+      <div style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', marginBottom: '0.25rem' }}>
+        {label}
+      </div>
+      <div style={{ fontWeight: 600, color: cor || 'var(--text-primary)' }}>
+        {valor}
+      </div>
+    </div>
+  );
+}
+
+function LinhaValor({ label, valor, cor, destaque }) {
+  return (
+    <div style={{
+      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+      padding: '0.25rem 0'
+    }}>
+      <span style={{
+        color: 'var(--text-secondary)',
+        fontSize: destaque ? '0.95rem' : '0.85rem'
+      }}>
+        {label}
+      </span>
+      <strong style={{
+        color: cor || 'var(--text-primary)',
+        fontSize: destaque ? '1.15rem' : '0.95rem'
+      }}>
+        {valor}
+      </strong>
     </div>
   );
 }
