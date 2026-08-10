@@ -25,4 +25,8 @@ dist-ssr
 *.sw?
 .vercel
 .env*.local
-.env*
+
+# .env.production só tem a URL pública da API e precisa ir no build da Vercel.
+# A exceção é necessária porque o .gitignore da raiz ignora `.env*`, e o deploy
+# via CLI exclui do upload tudo que casa com o .gitignore.
+!.env.production
