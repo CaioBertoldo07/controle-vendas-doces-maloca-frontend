@@ -3,7 +3,11 @@
     "allow": [
       "Bash(npx prisma *)",
       "Bash(npm run *)",
-      "Bash(node --input-type=module --eval ' *)"
+      "Bash(node --input-type=module --eval ' *)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\caiob\\\\Documents\\\\GitHub\\\\controle-vendas-doces-maloca-frontend\" -Recurse -Directory)",
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "Bash(Sort-Object)",
+      "Bash(git *)"
     ]
   }
 }
