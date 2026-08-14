@@ -1,3 +1,5 @@
+/* eslint-disable react-hooks/exhaustive-deps */
+/* eslint-disable no-unused-vars */
 import { useState, useEffect } from 'react';
 import { vendasAPI, clientesAPI, custosAPI } from '../services/api';
 
@@ -10,8 +12,12 @@ function Relatorios() {
     mes: new Date().getMonth() + 1,
     ano: new Date().getFullYear(),
     clienteId: '',
-    tipo: ''
+    tipo: '',
+    situacao: ''
   });
+
+  // Venda cujo pagamento está sendo atualizado (trava o botão)
+  const [salvandoPagamento, setSalvandoPagamento] = useState(null);
 
   // Modal de edição
   const [showModal, setShowModal] = useState(false);
@@ -69,14 +75,43 @@ function Relatorios() {
     setTimeout(() => setMsg({ text: '', type: '' }), 3500);
   };
 
-  // ===== FILTRO DE TIPO (frontend) =====
+  // ===== FILTROS DE TIPO E SITUAÇÃO (frontend) =====
   const vendasFiltradas = vendas.filter(v => {
+    if (filtros.situacao === 'pagas' && !v.pago) return false;
+    if (filtros.situacao === 'pendentes' && v.pago) return false;
     if (!filtros.tipo) return true;
     const ehDireta = v.cliente.nome.toLowerCase().includes('venda direta');
     if (filtros.tipo === 'direta') return ehDireta;
     if (filtros.tipo === 'atacado') return !ehDireta;
     return true;
   });
+
+  // ===== PAGAMENTO =====
+  const handleTogglePagamento = async (venda) => {
+    const novoStatus = !venda.pago;
+
+    if (!novoStatus && !confirm(
+      `Voltar a venda de "${venda.cliente.nome}" para pendente? ` +
+      `Ela sai do faturamento até ser marcada como paga de novo.`
+    )) return;
+
+    setSalvandoPagamento(venda.id);
+    try {
+      const { data } = await vendasAPI.marcarPagamento(venda.id, novoStatus);
+      const atualizar = (v) => v && v.id === venda.id
+        ? { ...v, pago: data.pago, dataPagamento: data.dataPagamento }
+        : v;
+      setVendas(prev => prev.map(atualizar));
+      setVendoVenda(prev => atualizar(prev));
+      showMsg(novoStatus
+        ? '✅ Venda marcada como paga!'
+        : '↩️ Venda voltou para pendente');
+    } catch (error) {
+      showMsg('❌ ' + (error.response?.data?.error || 'Erro ao atualizar pagamento'), 'error');
+    } finally {
+      setSalvandoPagamento(null);
+    }
+  };
 
   // ===== DELETAR =====
   const handleDeletar = async (venda) => {
@@ -214,7 +249,7 @@ function Relatorios() {
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor);
 
   const exportarCSV = () => {
-    const headers = ['Data', 'Hora', 'Cliente', 'Tipo', 'Quantidade', 'Valor', 'Desconto'];
+    const headers = ['Data', 'Hora', 'Cliente', 'Tipo', 'Quantidade', 'Valor', 'Desconto', 'Situação', 'Pago em'];
     const rows = vendasFiltradas.map(v => [
       formatarData(v.data),
       extrairHora(v.data) || '',
@@ -222,20 +257,26 @@ function Relatorios() {
       v.cliente.nome.toLowerCase().includes('venda direta') ? 'Direta' : 'Atacado',
       v.quantidade,
       parseFloat(v.valor).toFixed(2),
-      parseFloat(v.desconto || 0).toFixed(2)
+      parseFloat(v.desconto || 0).toFixed(2),
+      v.pago ? 'Paga' : 'Pendente',
+      v.dataPagamento ? formatarData(v.dataPagamento) : ''
     ]);
     const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `vendas_${filtros.mes}_${filtros.ano}${filtros.tipo ? '_' + filtros.tipo : ''}.csv`;
+    a.download = `vendas_${filtros.mes}_${filtros.ano}${filtros.tipo ? '_' + filtros.tipo : ''}${filtros.situacao ? '_' + filtros.situacao : ''}.csv`;
     a.click();
   };
 
   // ===== CÁLCULOS (sobre vendasFiltradas) =====
   const totalGeral = vendasFiltradas.reduce((sum, v) => sum + v.quantidade, 0);
-  const faturamento = vendasFiltradas.reduce((sum, v) => sum + parseFloat(v.valor), 0);
+  // Faturamento conta só o que já foi recebido; o resto fica em "a receber"
+  const vendasPagas = vendasFiltradas.filter(v => v.pago);
+  const vendasPendentes = vendasFiltradas.filter(v => !v.pago);
+  const faturamento = vendasPagas.reduce((sum, v) => sum + parseFloat(v.valor), 0);
+  const aReceber = vendasPendentes.reduce((sum, v) => sum + parseFloat(v.valor), 0);
   const totalCustos = resumoCustos ? parseFloat(resumoCustos.totalGeral) : 0;
   const lucro = faturamento - totalCustos;
   const margemLucro = faturamento > 0 ? ((lucro / faturamento) * 100).toFixed(1) : 0;
@@ -304,6 +345,15 @@ function Relatorios() {
             </select>
           </div>
 
+          <div className="form-group" style={{ margin: 0 }}>
+            <label>Situação</label>
+            <select value={filtros.situacao} onChange={(e) => setFiltros({ ...filtros, situacao: e.target.value })}>
+              <option value="">Todas</option>
+              <option value="pagas">✅ Pagas</option>
+              <option value="pendentes">⏳ Pendentes</option>
+            </select>
+          </div>
+
           <div style={{ display: 'flex', alignItems: 'flex-end' }}>
             <button
               className="btn-secondary"
@@ -332,7 +382,17 @@ function Relatorios() {
           <div style={cardStyle('#4ADE80')}>
             <div style={cardLabelStyle}>💰 Faturamento</div>
             <div style={cardValueStyle('#4ADE80')}>{formatarMoeda(faturamento)}</div>
-            <div style={cardSubStyle}>receita bruta</div>
+            <div style={cardSubStyle}>
+              {vendasPagas.length} venda{vendasPagas.length === 1 ? '' : 's'} paga{vendasPagas.length === 1 ? '' : 's'}
+            </div>
+          </div>
+
+          <div style={cardStyle('#60a5fa')}>
+            <div style={cardLabelStyle}>⏳ A Receber</div>
+            <div style={cardValueStyle('#60a5fa')}>{formatarMoeda(aReceber)}</div>
+            <div style={cardSubStyle}>
+              {vendasPendentes.length} venda{vendasPendentes.length === 1 ? '' : 's'} pendente{vendasPendentes.length === 1 ? '' : 's'}
+            </div>
           </div>
 
           <div style={cardStyle('#f59e0b')}>
@@ -375,6 +435,18 @@ function Relatorios() {
           </div>
         )}
 
+        {/* Aviso de valores ainda não recebidos */}
+        {vendasPendentes.length > 0 && (
+          <div style={{
+            marginTop: '1rem', padding: '0.7rem 1rem',
+            background: 'var(--bg-primary)', borderRadius: '8px',
+            border: '1px solid #60a5fa', color: '#60a5fa', fontSize: '0.85rem',
+            display: 'flex', alignItems: 'center', gap: '0.5rem'
+          }}>
+            💡 O faturamento considera só as vendas marcadas como pagas. Há {formatarMoeda(aReceber)} aguardando pagamento — marque na tabela abaixo quando receber.
+          </div>
+        )}
+
         {/* Aviso quando filtro de tipo está ativo */}
         {filtros.tipo && (
           <div style={{
@@ -413,6 +485,7 @@ function Relatorios() {
                   <th>Qtd</th>
                   <th>Valor</th>
                   <th>Desconto</th>
+                  <th style={{ textAlign: 'center' }}>Pagamento</th>
                   <th style={{ textAlign: 'center' }}>Ações</th>
                 </tr>
               </thead>
@@ -443,7 +516,7 @@ function Relatorios() {
                       <td style={{ color: 'var(--laranja-maloca)', fontWeight: 'bold', fontSize: '1.1rem' }}>
                         {venda.quantidade}
                       </td>
-                      <td style={{ color: '#4ADE80', fontWeight: 'bold' }}>
+                      <td style={{ color: venda.pago ? '#4ADE80' : '#60a5fa', fontWeight: 'bold' }}>
                         {formatarMoeda(parseFloat(venda.valor))}
                       </td>
                       <td style={{
@@ -453,6 +526,14 @@ function Relatorios() {
                         {parseFloat(venda.desconto || 0) > 0
                           ? `- ${formatarMoeda(parseFloat(venda.desconto))}`
                           : '-'}
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        <BotaoPagamento
+                          venda={venda}
+                          salvando={salvandoPagamento === venda.id}
+                          onToggle={() => handleTogglePagamento(venda)}
+                          formatarData={formatarData}
+                        />
                       </td>
                       <td>
                         <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
@@ -546,6 +627,14 @@ function Relatorios() {
                 valor={`${vendoVenda.quantidade} unidades`}
                 cor="var(--laranja-maloca)"
               />
+              <InfoBox
+                label="💳 Pagamento"
+                valor={vendoVenda.pago
+                  ? `✅ Paga${vendoVenda.dataPagamento ? ` em ${formatarData(vendoVenda.dataPagamento)}` : ''}`
+                  : '⏳ Pendente'}
+                cor={vendoVenda.pago ? '#4ADE80' : '#60a5fa'}
+                span
+              />
             </div>
 
             {/* Sabores */}
@@ -604,6 +693,16 @@ function Relatorios() {
                 valor={formatarMoeda(parseFloat(vendoVenda.valor))}
                 cor="#4ADE80"
                 destaque
+              />
+            </div>
+
+            <div style={{ marginBottom: '1.2rem' }}>
+              <BotaoPagamento
+                venda={vendoVenda}
+                salvando={salvandoPagamento === vendoVenda.id}
+                onToggle={() => handleTogglePagamento(vendoVenda)}
+                formatarData={formatarData}
+                largura="100%"
               />
             </div>
 
@@ -758,6 +857,41 @@ function Relatorios() {
         </div>
       )}
     </div>
+  );
+}
+
+// Badge clicável que alterna entre pago e pendente
+function BotaoPagamento({ venda, salvando, onToggle, formatarData, largura }) {
+  const pago = venda.pago;
+  const cor = pago ? '#4ADE80' : '#60a5fa';
+  return (
+    <button
+      onClick={onToggle}
+      disabled={salvando}
+      title={pago
+        ? `Paga${venda.dataPagamento ? ` em ${formatarData(venda.dataPagamento)}` : ''} — clique para voltar a pendente`
+        : 'Clique para marcar como paga'}
+      style={{
+        background: salvando ? 'transparent' : `${pago ? 'rgba(74,222,128,0.1)' : 'rgba(96,165,250,0.1)'}`,
+        color: cor,
+        border: `1px solid ${cor}`,
+        borderRadius: '20px',
+        padding: '0.3rem 0.8rem',
+        fontSize: '0.8rem',
+        fontWeight: 600,
+        cursor: salvando ? 'wait' : 'pointer',
+        whiteSpace: 'nowrap',
+        opacity: salvando ? 0.5 : 1,
+        transition: 'all 0.2s',
+        width: largura || undefined
+      }}
+      onMouseEnter={e => { if (!salvando) e.currentTarget.style.background = cor + '33'; }}
+      onMouseLeave={e => {
+        e.currentTarget.style.background = pago ? 'rgba(74,222,128,0.1)' : 'rgba(96,165,250,0.1)';
+      }}
+    >
+      {salvando ? '⏱️ ...' : pago ? '✅ Paga' : '⏳ Marcar paga'}
+    </button>
   );
 }
 

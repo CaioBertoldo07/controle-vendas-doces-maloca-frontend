@@ -40,6 +40,9 @@ function Dashboard() {
     (_, i) => 2024 + i
   );
 
+  const formatarMoeda = (valor) =>
+    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor);
+
   const mesNome = new Date(anoSelecionado, mesSelecionado - 1).toLocaleString('pt-BR', { month: 'long' });
   const totalAnual = relatorioAnual?.meses.reduce((sum, m) => sum + m.totalQuantidade, 0) || 0;
 
@@ -112,6 +115,16 @@ function Dashboard() {
           <h3>👥 Clientes Ativos</h3>
           <div className="value">{Object.keys(totais?.porCliente || {}).length}</div>
           <div className="subtitle">{mesNome} de {anoSelecionado}</div>
+        </div>
+
+        <div className="stat-card">
+          <h3>⏳ A Receber</h3>
+          <div className="value" style={{ fontSize: '2.2rem' }}>
+            {formatarMoeda(parseFloat(totais?.valorPendente || 0))}
+          </div>
+          <div className="subtitle">
+            {totais?.totalVendasPendentes || 0} venda{totais?.totalVendasPendentes === 1 ? '' : 's'} aguardando pagamento
+          </div>
         </div>
       </div>
 

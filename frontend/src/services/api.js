@@ -68,6 +68,7 @@ export const vendasAPI = {
   listar: (params) => api.get("/vendas", { params }),
   buscar: (id) => api.get(`/vendas/${id}`),
   atualizar: (id, dados) => api.put(`/vendas/${id}`, dados),
+  marcarPagamento: (id, pago) => api.patch(`/vendas/${id}/pagamento`, { pago }),
   deletar: (id) => api.delete(`/vendas/${id}`),
   totais: (params) => api.get("/vendas/totais", { params }),
   relatorioMensal: (ano) =>

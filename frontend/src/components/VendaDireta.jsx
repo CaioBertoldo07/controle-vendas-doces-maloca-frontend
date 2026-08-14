@@ -131,7 +131,7 @@ function VendaDireta() {
         ...(obsCompleta && { observacao: obsCompleta })
       });
 
-      showMsg('✅ Venda direta registrada com sucesso!');
+      showMsg('✅ Venda registrada! Marque como paga em Relatórios quando receber.');
 
       // Limpar form
       setItens({});

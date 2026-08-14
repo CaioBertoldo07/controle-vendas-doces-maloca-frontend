@@ -12,6 +12,7 @@ export const criarVendaAuto = async (req, res) => {
       valor,
       desconto = 0,
       data,
+      pago = false, // venda nasce pendente; é marcada como paga em Relatórios
       idempotencyKey, // chave única enviada pelo n8n para evitar duplicata
     } = req.body;
 
@@ -66,6 +67,7 @@ export const criarVendaAuto = async (req, res) => {
     );
 
     // --- Criar Venda ---
+    const foiPago = pago === true || pago === "true";
     const venda = await prisma.venda.create({
       data: {
         clienteId: cliente.id,
@@ -73,6 +75,8 @@ export const criarVendaAuto = async (req, res) => {
         valor: parseFloat(valor),
         desconto: parseFloat(desconto),
         data: data ? new Date(data) : new Date(),
+        pago: foiPago,
+        dataPagamento: foiPago ? new Date() : null,
         idempotencyKey: idempotencyKey || null,
         sabores: {
           create: saboresResolvidos,
@@ -106,7 +110,15 @@ export const criarVendaAuto = async (req, res) => {
 
 export const criarVenda = async (req, res) => {
   try {
-    const { clienteId, quantidade, valor, desconto, data, sabores } = req.body;
+    const {
+      clienteId,
+      quantidade,
+      valor,
+      desconto,
+      data,
+      sabores,
+      pago = false,
+    } = req.body;
 
     // Validações
     if (
@@ -129,6 +141,7 @@ export const criarVenda = async (req, res) => {
     }
 
     // Criar venda com sabores
+    const foiPago = pago === true || pago === "true";
     const venda = await prisma.venda.create({
       data: {
         clienteId: parseInt(clienteId),
@@ -136,6 +149,8 @@ export const criarVenda = async (req, res) => {
         valor: parseFloat(valor),
         desconto: parseFloat(desconto || 0),
         data: data ? new Date(data) : new Date(),
+        pago: foiPago,
+        dataPagamento: foiPago ? new Date() : null,
         sabores: {
           create: sabores.map((s) => ({
             saborId: parseInt(s.saborId),
@@ -165,9 +180,13 @@ export const criarVenda = async (req, res) => {
 
 export const listarVendas = async (req, res) => {
   try {
-    const { mes, ano, clienteId, dataInicio, dataFim, limit } = req.query;
+    const { mes, ano, clienteId, dataInicio, dataFim, limit, pago } = req.query;
 
     let where = {};
+
+    if (pago === "true" || pago === "false") {
+      where.pago = pago === "true";
+    }
 
     if (mes && ano) {
       const startDate = new Date(ano, mes - 1, 1);
@@ -237,7 +256,8 @@ export const buscarVenda = async (req, res) => {
 export const atualizarVenda = async (req, res) => {
   try {
     const { id } = req.params;
-    const { clienteId, quantidade, valor, desconto, data, sabores } = req.body;
+    const { clienteId, quantidade, valor, desconto, data, sabores, pago } =
+      req.body;
 
     const vendaExiste = await prisma.venda.findUnique({
       where: { id: parseInt(id) },
@@ -262,6 +282,14 @@ export const atualizarVenda = async (req, res) => {
         // desconto usa checagem explícita: 0 é um valor válido (remover o desconto)
         ...(desconto !== undefined && { desconto: parseFloat(desconto) || 0 }),
         ...(data && { data: new Date(data) }),
+        // pago usa checagem explícita: false é um valor válido (voltar a pendente)
+        ...(pago !== undefined && {
+          pago: pago === true || pago === "true",
+          dataPagamento:
+            pago === true || pago === "true"
+              ? vendaExiste.dataPagamento || new Date()
+              : null,
+        }),
         ...(sabores && {
           sabores: {
             create: sabores.map((s) => ({
@@ -285,6 +313,55 @@ export const atualizarVenda = async (req, res) => {
   } catch (error) {
     console.error("Erro ao atualizar venda:", error);
     res.status(500).json({ error: "Erro ao atualizar venda" });
+  }
+};
+
+// PATCH /api/vendas/:id/pagamento - marca a venda como paga ou volta para pendente
+export const atualizarPagamento = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { pago, dataPagamento } = req.body;
+
+    if (pago === undefined) {
+      return res.status(400).json({ error: "Campo 'pago' é obrigatório" });
+    }
+
+    const vendaExiste = await prisma.venda.findUnique({
+      where: { id: parseInt(id) },
+    });
+
+    if (!vendaExiste) {
+      return res.status(404).json({ error: "Venda não encontrada" });
+    }
+
+    const foiPago = pago === true || pago === "true";
+
+    const venda = await prisma.venda.update({
+      where: { id: parseInt(id) },
+      data: {
+        pago: foiPago,
+        // Ao marcar como paga registra o momento do recebimento;
+        // ao voltar para pendente a data é limpa.
+        dataPagamento: foiPago
+          ? dataPagamento
+            ? new Date(dataPagamento)
+            : vendaExiste.dataPagamento || new Date()
+          : null,
+      },
+      include: {
+        cliente: true,
+        sabores: {
+          include: {
+            sabor: true,
+          },
+        },
+      },
+    });
+
+    res.json(venda);
+  } catch (error) {
+    console.error("Erro ao atualizar pagamento:", error);
+    res.status(500).json({ error: "Erro ao atualizar pagamento da venda" });
   }
 };
 
@@ -335,6 +412,15 @@ export const obterTotais = async (req, res) => {
     const totalGeral = vendas.reduce((sum, v) => sum + v.quantidade, 0);
     const valorTotal = vendas.reduce((sum, v) => sum + parseFloat(v.valor), 0);
 
+    // Faturamento considera apenas o que já foi recebido; o resto é "a receber"
+    const vendasPagas = vendas.filter((v) => v.pago);
+    const vendasPendentes = vendas.filter((v) => !v.pago);
+    const valorPago = vendasPagas.reduce((sum, v) => sum + parseFloat(v.valor), 0);
+    const valorPendente = vendasPendentes.reduce(
+      (sum, v) => sum + parseFloat(v.valor),
+      0,
+    );
+
     const porCliente = vendas.reduce((acc, v) => {
       const nome = v.cliente.nome;
       acc[nome] = (acc[nome] || 0) + v.quantidade;
@@ -350,7 +436,11 @@ export const obterTotais = async (req, res) => {
     res.json({
       totalGeral,
       valorTotal: valorTotal.toFixed(2),
+      valorPago: valorPago.toFixed(2),
+      valorPendente: valorPendente.toFixed(2),
       totalVendas: vendas.length,
+      totalVendasPagas: vendasPagas.length,
+      totalVendasPendentes: vendasPendentes.length,
       porCliente,
       porDia,
       media:
@@ -386,6 +476,9 @@ export const relatorioMensal = async (req, res) => {
         (sum, v) => sum + parseFloat(v.valor),
         0,
       );
+      const valorPago = vendas
+        .filter((v) => v.pago)
+        .reduce((sum, v) => sum + parseFloat(v.valor), 0);
 
       meses.push({
         mes,
@@ -393,6 +486,8 @@ export const relatorioMensal = async (req, res) => {
         totalVendas: vendas.length,
         totalQuantidade: total,
         valorTotal: valorTotal.toFixed(2),
+        valorPago: valorPago.toFixed(2),
+        valorPendente: (valorTotal - valorPago).toFixed(2),
       });
     }
 

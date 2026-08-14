@@ -120,7 +120,7 @@ function RegistrarVenda() {
         sabores: saboresArray
       });
 
-      setMessage('✅ Venda registrada com sucesso!');
+      setMessage('✅ Venda registrada! Marque como paga em Relatórios quando receber o pagamento.');
       setFormData({ clienteId: '', data: hojeFormatado(), desconto: '' });
       setSaboresSelecionados({});
       setValorTotal('0.00');

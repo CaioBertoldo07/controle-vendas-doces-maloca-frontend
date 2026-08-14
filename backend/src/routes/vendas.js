@@ -24,6 +24,9 @@ router.post("/", validateVenda, vendasController.criarVenda);
 // PUT /api/vendas/:id - Atualizar venda
 router.put("/:id", validateVenda, vendasController.atualizarVenda);
 
+// PATCH /api/vendas/:id/pagamento - Marcar venda como paga / pendente
+router.patch("/:id/pagamento", vendasController.atualizarPagamento);
+
 // DELETE /api/vendas/:id - Deletar venda
 router.delete("/:id", vendasController.deletarVenda);
 
