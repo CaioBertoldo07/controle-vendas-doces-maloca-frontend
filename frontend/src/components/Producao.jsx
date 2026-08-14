@@ -309,7 +309,7 @@ export default function Producao() {
             <p>Clique em "Registrar Produção" para começar</p>
           </div>
         ) : (
-          <div className="table-container">
+          <div className="table-container table-container--wide">
             <table>
               <thead>
                 <tr>
@@ -326,7 +326,7 @@ export default function Producao() {
                   return (
                     <tr key={r.id}>
                       <td>{formatarData(r.data)}</td>
-                      <td>
+                      <td className="cell-wrap">
                         <div style={{ display:'flex', flexWrap:'wrap', gap:'0.4rem' }}>
                           {r.sabores.map(ps => (
                             <span key={ps.id} style={{
@@ -339,7 +339,7 @@ export default function Producao() {
                         </div>
                       </td>
                       <td style={{ color:'var(--laranja-maloca)', fontWeight:'bold', fontSize:'1.1rem' }}>{total}</td>
-                      <td style={{ color:'var(--text-secondary)' }}>{r.observacao || '—'}</td>
+                      <td className="cell-wrap" style={{ color:'var(--text-secondary)' }}>{r.observacao || '—'}</td>
                       <td>
                         <div style={{ display:'flex', gap:'0.5rem', justifyContent:'center' }}>
                           <button onClick={() => abrirModal(r)} style={{ background:'var(--laranja-maloca)', color:'#fff', border:'none', padding:'0.5rem 0.8rem', borderRadius:'6px', cursor:'pointer' }}>✏️</button>
@@ -352,6 +352,9 @@ export default function Producao() {
               </tbody>
             </table>
           </div>
+        )}
+        {!loading && resumo?.registros?.length > 0 && (
+          <div className="table-scroll-hint">← deslize para ver todas as colunas →</div>
         )}
       </div>
 

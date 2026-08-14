@@ -229,7 +229,7 @@ export default function Custos() {
             <p>Clique em "Novo Custo" para começar</p>
           </div>
         ) : (
-          <div className="table-container">
+          <div className="table-container table-container--wide">
             <table>
               <thead>
                 <tr>
@@ -264,6 +264,9 @@ export default function Custos() {
               </tbody>
             </table>
           </div>
+        )}
+        {!loading && custos.length > 0 && (
+          <div className="table-scroll-hint">← deslize para ver todas as colunas →</div>
         )}
       </div>
 

@@ -375,6 +375,16 @@
   white-space: nowrap;
 }
 
+/* Exceção para células de texto livre (observação, lista de sabores):
+   continuam quebrando linha, com largura limitada para não esticar a tabela */
+.table-container--wide th.cell-wrap,
+.table-container--wide td.cell-wrap {
+  white-space: normal;
+  /* o piso evita que a coluna encolha e quebre o texto palavra a palavra */
+  min-width: 200px;
+  max-width: 320px;
+}
+
 /* Aviso de rolagem — só faz sentido em tela pequena */
 .table-scroll-hint {
   display: none;
@@ -633,7 +643,11 @@ tr:last-child td {
 
 /* ===== BADGES ===== */
 .badge {
-  display: inline-block;
+  /* inline-flex + nowrap: ícone e texto não se separam em coluna estreita */
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  white-space: nowrap;
   padding: 0.4rem 0.8rem;
   border-radius: 20px;
   font-size: 0.85rem;
