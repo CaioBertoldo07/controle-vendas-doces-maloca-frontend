@@ -483,7 +483,7 @@ function Relatorios() {
             <p>Ajuste os filtros ou registre uma nova venda</p>
           </div>
         ) : (
-          <div className="table-container">
+          <div className="table-container table-container--wide">
             <table>
               <thead>
                 <tr>
@@ -516,10 +516,14 @@ function Relatorios() {
                           background: ehDireta ? 'rgba(74,222,128,0.1)' : 'rgba(255,122,0,0.1)',
                           color: ehDireta ? '#4ADE80' : 'var(--laranja-maloca)',
                           border: `1px solid ${ehDireta ? '#4ADE80' : 'var(--laranja-maloca)'}`,
-                          borderRadius: '20px', padding: '0.2rem 0.7rem',
-                          fontSize: '0.8rem', fontWeight: 600
+                          borderRadius: '20px', padding: '0.25rem 0.7rem',
+                          fontSize: '0.8rem', fontWeight: 600,
+                          // inline-flex + nowrap: o emoji não quebra para outra linha
+                          display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+                          whiteSpace: 'nowrap', lineHeight: 1.4
                         }}>
-                          {ehDireta ? '🛒 Direta' : '🏪 Atacado'}
+                          <span aria-hidden="true">{ehDireta ? '🛒' : '🏪'}</span>
+                          {ehDireta ? 'Direta' : 'Atacado'}
                         </span>
                       </td>
                       <td style={{ color: 'var(--laranja-maloca)', fontWeight: 'bold', fontSize: '1.1rem' }}>
@@ -603,6 +607,10 @@ function Relatorios() {
               </tbody>
             </table>
           </div>
+        )}
+
+        {!loading && vendasFiltradas.length > 0 && (
+          <div className="table-scroll-hint">← deslize para ver todas as colunas →</div>
         )}
       </div>
 
@@ -887,11 +895,14 @@ function BotaoPagamento({ venda, salvando, onToggle, formatarData, largura }) {
         color: cor,
         border: `1px solid ${cor}`,
         borderRadius: '20px',
-        padding: '0.3rem 0.8rem',
+        padding: '0.35rem 0.8rem',
         fontSize: '0.8rem',
         fontWeight: 600,
         cursor: salvando ? 'wait' : 'pointer',
+        // inline-flex + nowrap: o rótulo não quebra dentro da pílula
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '0.3rem',
         whiteSpace: 'nowrap',
+        lineHeight: 1.4,
         opacity: salvando ? 0.5 : 1,
         transition: 'all 0.2s',
         width: largura || undefined
