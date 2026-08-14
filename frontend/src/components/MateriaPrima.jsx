@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { materiasPrimasAPI } from '../services/api';
+import { useConfirm } from '../hooks/useConfirm';
 
 const UNIDADES_BASE = [
   { value: 'g',  label: 'Gramas (g)' },
@@ -8,6 +9,7 @@ const UNIDADES_BASE = [
 ];
 
 function MateriaPrima() {
+  const [confirmar, dialogoConfirmacao] = useConfirm();
   const [resumo, setResumo] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -63,7 +65,13 @@ function MateriaPrima() {
   };
 
   const handleDeletar = async (id, nome) => {
-    if (!confirm(`Desativar "${nome}"?`)) return;
+    if (!await confirmar({
+      titulo: '⚠️ Desativar matéria-prima',
+      mensagem: `Desativar "${nome}"?`,
+      detalhe: 'Ela deixa de aparecer nos cadastros, mas o histórico é mantido.',
+      textoConfirmar: 'Desativar',
+      perigo: true
+    })) return;
     try {
       await materiasPrimasAPI.deletar(id);
       showMsg('✅ Matéria-prima desativada!');
@@ -220,6 +228,8 @@ function MateriaPrima() {
           </div>
         </div>
       )}
+
+      {dialogoConfirmacao}
     </div>
   );
 }

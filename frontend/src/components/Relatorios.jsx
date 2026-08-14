@@ -2,8 +2,10 @@
 /* eslint-disable no-unused-vars */
 import { useState, useEffect } from 'react';
 import { vendasAPI, clientesAPI, custosAPI } from '../services/api';
+import { useConfirm } from '../hooks/useConfirm';
 
 function Relatorios() {
+  const [confirmar, dialogoConfirmacao] = useConfirm();
   const [vendas, setVendas] = useState([]);
   const [clientes, setClientes] = useState([]);
   const [resumoCustos, setResumoCustos] = useState(null);
@@ -90,10 +92,12 @@ function Relatorios() {
   const handleTogglePagamento = async (venda) => {
     const novoStatus = !venda.pago;
 
-    if (!novoStatus && !confirm(
-      `Voltar a venda de "${venda.cliente.nome}" para pendente? ` +
-      `Ela sai do faturamento até ser marcada como paga de novo.`
-    )) return;
+    if (!novoStatus && !await confirmar({
+      titulo: '↩️ Voltar para pendente',
+      mensagem: `Marcar a venda de "${venda.cliente.nome}" como não paga?`,
+      detalhe: 'Ela sai do faturamento até ser marcada como paga de novo.',
+      textoConfirmar: 'Voltar para pendente'
+    })) return;
 
     setSalvandoPagamento(venda.id);
     try {
@@ -115,7 +119,12 @@ function Relatorios() {
 
   // ===== DELETAR =====
   const handleDeletar = async (venda) => {
-    if (!confirm(`Deseja realmente excluir a venda de "${venda.cliente.nome}" (${venda.quantidade} unidades)?`)) return;
+    if (!await confirmar({
+      mensagem: `Excluir a venda de "${venda.cliente.nome}"?`,
+      detalhe: `${venda.quantidade} unidades — ${formatarMoeda(parseFloat(venda.valor))}. Essa ação não pode ser desfeita.`,
+      textoConfirmar: '🗑️ Excluir',
+      perigo: true
+    })) return;
     try {
       await vendasAPI.deletar(venda.id);
       showMsg('✅ Venda excluída com sucesso!');
@@ -856,6 +865,8 @@ function Relatorios() {
           </div>
         </div>
       )}
+
+      {dialogoConfirmacao}
     </div>
   );
 }

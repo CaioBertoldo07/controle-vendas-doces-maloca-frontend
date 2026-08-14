@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { saboresAPI, materiasPrimasAPI } from '../services/api';
+import { useConfirm } from '../hooks/useConfirm';
 import './GerenciarSabores.css';
 
 const SABOR_ICONS = {
@@ -16,6 +17,7 @@ function getIcon(nome) {
 }
 
 function GerenciarSabores() {
+  const [confirmar, dialogoConfirmacao] = useConfirm();
   const [sabores, setSabores] = useState([]);
   const [materiasPrimas, setMateriasPrimas] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -202,7 +204,12 @@ function GerenciarSabores() {
   };
 
   const handleDeletar = async (sabor) => {
-    if (!confirm(`Deseja remover o sabor "${sabor.nome}"?`)) return;
+    if (!await confirmar({
+      mensagem: `Remover o sabor "${sabor.nome}"?`,
+      detalhe: 'Se houver vendas vinculadas, ele será apenas desativado.',
+      textoConfirmar: '🗑️ Remover',
+      perigo: true
+    })) return;
     try {
       const response = await saboresAPI.deletar(sabor.id);
       if (response.data.desativado) {
@@ -460,6 +467,8 @@ function GerenciarSabores() {
           </div>
         </div>
       )}
+
+      {dialogoConfirmacao}
     </div>
   );
 }

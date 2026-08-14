@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { custosAPI, materiasPrimasAPI } from '../services/api';
+import { useConfirm } from '../hooks/useConfirm';
 
 const CATEGORIAS = ['Matéria Prima', 'Embalagem', 'Equipamento', 'Outros'];
 const UNIDADES   = ['kg', 'g', 'L', 'ml', 'un', 'cx', 'pct', 'saco'];
@@ -31,6 +32,7 @@ const mesAtual = new Date().getMonth() + 1;
 const anoAtual = new Date().getFullYear();
 
 export default function Custos() {
+  const [confirmar, dialogoConfirmacao] = useConfirm();
   const [custos, setCustos] = useState([]);
   const [resumo, setResumo] = useState(null);
   const [materiasPrimas, setMateriasPrimas] = useState([]);
@@ -131,7 +133,12 @@ export default function Custos() {
   };
 
   const handleDeletar = async (id) => {
-    if (!confirm('Deseja deletar este custo?')) return;
+    if (!await confirmar({
+      mensagem: 'Deletar este custo?',
+      detalhe: 'Essa ação não pode ser desfeita.',
+      textoConfirmar: '🗑️ Deletar',
+      perigo: true
+    })) return;
     try {
       await custosAPI.deletar(id);
       showMsg('✅ Custo deletado!');
@@ -327,6 +334,8 @@ export default function Custos() {
           </div>
         </div>
       )}
+
+      {dialogoConfirmacao}
     </div>
   );
 }

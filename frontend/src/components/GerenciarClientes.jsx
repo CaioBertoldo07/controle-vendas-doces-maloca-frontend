@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import { clientesAPI } from '../services/api';
+import { useConfirm } from '../hooks/useConfirm';
 
 function GerenciarClientes() {
+  const [confirmar, dialogoConfirmacao] = useConfirm();
   const [clientes, setClientes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -63,7 +65,12 @@ function GerenciarClientes() {
   };
 
   const handleDeletar = async (id, nome) => {
-    if (!confirm(`Deseja realmente deletar o cliente "${nome}"?`)) return;
+    if (!await confirmar({
+      mensagem: `Deletar o cliente "${nome}"?`,
+      detalhe: 'Só é possível deletar clientes sem vendas registradas.',
+      textoConfirmar: '🗑️ Deletar',
+      perigo: true
+    })) return;
 
     try {
       await clientesAPI.deletar(id);
@@ -225,6 +232,8 @@ function GerenciarClientes() {
           </div>
         </div>
       )}
+
+      {dialogoConfirmacao}
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { producaoAPI, saboresAPI } from '../services/api';
+import { useConfirm } from '../hooks/useConfirm';
 
 function brParaIso(dataBr) {
   const [dia, mes, ano] = dataBr.split('/');
@@ -25,6 +26,7 @@ const anoAtual = new Date().getFullYear();
 const SABOR_CORES = ['#f59e0b','#10b981','#3b82f6','#ec4899','#8b5cf6','#ef4444'];
 
 export default function Producao() {
+  const [confirmar, dialogoConfirmacao] = useConfirm();
   const [resumo, setResumo] = useState(null);
   const [saboresDisponiveis, setSaboresDisponiveis] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -132,7 +134,12 @@ export default function Producao() {
   };
 
   const handleDeletar = async (id) => {
-    if (!confirm('Deseja deletar este registro?')) return;
+    if (!await confirmar({
+      mensagem: 'Deletar este registro de produção?',
+      detalhe: 'Essa ação não pode ser desfeita.',
+      textoConfirmar: '🗑️ Deletar',
+      perigo: true
+    })) return;
     try {
       await producaoAPI.deletar(id);
       showMsg('✅ Deletado!');
@@ -455,6 +462,8 @@ export default function Producao() {
           </div>
         </div>
       )}
+
+      {dialogoConfirmacao}
     </div>
   );
 }
