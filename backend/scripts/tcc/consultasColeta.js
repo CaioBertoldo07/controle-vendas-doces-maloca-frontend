@@ -4,7 +4,11 @@
  * Cada consulta é constante (nenhum trecho vem de entrada do usuário) e é
  * validada por `validarSomenteLeitura` antes de executar.
  * Nomes de tabela/coluna seguem backend/prisma/schema.prisma.
- * Nenhuma consulta retorna nome de cliente ou dado de usuário.
+ *
+ * Consultas com `privada: true` servem só de insumo para a análise
+ * (analiseColeta.js): suas linhas NÃO são gravadas nos arquivos de saída,
+ * apenas os agregados derivados. É o caso de nomes de clientes e de séries
+ * por cliente/dia.
  */
 
 export const CONSULTAS = [
@@ -130,6 +134,11 @@ export const CONSULTAS = [
     nome: "materias_primas_saldo",
     descricao: "Saldo por matéria-prima (mesma regra do backend: ENTRADA/AJUSTE somam, SAIDA subtrai)",
     sql: `SELECT m.id, m.nome, m.unidadeBase AS unidade_base, m.ativo,
+                 COALESCE(SUM(mv.tipo = 'ENTRADA'), 0) AS n_entradas,
+                 COALESCE(SUM(CASE WHEN mv.tipo = 'ENTRADA' THEN mv.quantidade END), 0) AS q_entradas,
+                 COALESCE(SUM(mv.tipo = 'SAIDA'), 0) AS n_saidas,
+                 COALESCE(SUM(CASE WHEN mv.tipo = 'SAIDA' THEN mv.quantidade END), 0) AS q_saidas,
+                 COALESCE(SUM(mv.tipo = 'AJUSTE'), 0) AS n_ajustes,
                  COALESCE(SUM(CASE mv.tipo
                                 WHEN 'ENTRADA' THEN mv.quantidade
                                 WHEN 'AJUSTE' THEN mv.quantidade
@@ -233,6 +242,57 @@ export const CONSULTAS = [
            WHERE data >= '2026-08-14'`,
   },
 
+  {
+    nome: "pagamentos_por_mes",
+    descricao: "Por mês da venda: pagas, pendentes e pagas com dataPagamento igual/diferente da data da venda",
+    sql: `SELECT DATE_FORMAT(data, '%Y-%m') AS mes,
+                 COUNT(*) AS vendas,
+                 COALESCE(SUM(pago), 0) AS pagas,
+                 COALESCE(SUM(NOT pago), 0) AS pendentes,
+                 COALESCE(SUM(pago AND dataPagamento = data), 0) AS pagas_dp_igual_data,
+                 COALESCE(SUM(pago AND dataPagamento <> data), 0) AS pagas_dp_diferente,
+                 COALESCE(SUM(pago AND dataPagamento IS NULL), 0) AS pagas_sem_dp
+            FROM vendas
+           GROUP BY DATE_FORMAT(data, '%Y-%m')
+           ORDER BY mes`,
+  },
+  {
+    nome: "pagamentos_antes_depois",
+    descricao: "Vendas antes × depois de 14/08/2026 (entrada do controle de pagamento)",
+    sql: `SELECT CASE WHEN data < '2026-08-14' THEN 'antes' ELSE 'depois' END AS periodo,
+                 COUNT(*) AS vendas,
+                 COALESCE(SUM(valor), 0) AS valor,
+                 COALESCE(SUM(pago), 0) AS pagas,
+                 COALESCE(SUM(NOT pago), 0) AS pendentes,
+                 COALESCE(SUM(pago AND dataPagamento = data), 0) AS pagas_dp_igual_data,
+                 COALESCE(SUM(pago AND dataPagamento <> data), 0) AS pagas_dp_diferente
+            FROM vendas
+           GROUP BY periodo
+           ORDER BY periodo`,
+  },
+  {
+    nome: "pagamentos_datas_backfill",
+    descricao: "Faixas de datas das vendas pagas com dataPagamento = data (padrão do backfill) e das demais pagas",
+    sql: `SELECT SUM(dataPagamento = data) AS pagas_dp_igual_data,
+                 MIN(CASE WHEN dataPagamento = data THEN data END) AS primeira_venda_dp_igual,
+                 MAX(CASE WHEN dataPagamento = data THEN data END) AS ultima_venda_dp_igual,
+                 SUM(dataPagamento <> data) AS pagas_dp_diferente,
+                 MIN(CASE WHEN dataPagamento <> data THEN dataPagamento END) AS primeiro_registro_pagamento_manual,
+                 MAX(CASE WHEN dataPagamento <> data THEN dataPagamento END) AS ultimo_registro_pagamento_manual
+            FROM vendas
+           WHERE pago = TRUE`,
+  },
+  {
+    nome: "pagamentos_dias_de_registro",
+    descricao: "Dias em que mais pagamentos foram registrados (dataPagamento), só vendas com dataPagamento diferente da data",
+    sql: `SELECT DATE(dataPagamento) AS dia_registro, COUNT(*) AS pagamentos
+            FROM vendas
+           WHERE pago = TRUE AND dataPagamento <> data
+           GROUP BY DATE(dataPagamento)
+           ORDER BY pagamentos DESC
+           LIMIT 10`,
+  },
+
   // ---------- Clientes (apenas contagens) ----------
   {
     nome: "clientes_resumo",
@@ -241,5 +301,97 @@ export const CONSULTAS = [
                  (SELECT COUNT(DISTINCT clienteId) FROM vendas) AS clientes_com_venda,
                  (SELECT COUNT(DISTINCT clienteId) FROM vendas WHERE data >= NOW() - INTERVAL 90 DAY) AS clientes_ativos_90_dias
             FROM clientes`,
+  },
+
+  // ---------- Unidades e custo de receita ----------
+  {
+    nome: "custos_por_unidade",
+    descricao: "Unidades usadas nos custos e quantos estão vinculados a matéria-prima",
+    sql: `SELECT unidade, COUNT(*) AS custos,
+                 COALESCE(SUM(materiaPrimaId IS NOT NULL), 0) AS vinculados
+            FROM custos
+           GROUP BY unidade
+           ORDER BY custos DESC`,
+  },
+  {
+    nome: "materias_primas_por_unidade_base",
+    descricao: "Unidades base cadastradas nas matérias-primas",
+    sql: `SELECT unidadeBase AS unidade_base, COUNT(*) AS materias_primas
+            FROM materias_primas
+           GROUP BY unidadeBase`,
+  },
+  {
+    nome: "receita_itens",
+    descricao: "Itens de receita (sabor × matéria-prima × quantidade base)",
+    sql: `SELECT saborId AS sabor_id, materiaPrimaId AS materia_prima_id,
+                 quantidadeBase AS quantidade_base
+            FROM receita_itens
+           ORDER BY saborId, materiaPrimaId`,
+  },
+  {
+    nome: "compras_por_materia_prima",
+    descricao: "Compras vinculadas por matéria-prima e unidade (insumo do custo unitário)",
+    sql: `SELECT c.materiaPrimaId AS materia_prima_id, c.unidade,
+                 m.unidadeBase AS unidade_base,
+                 COUNT(*) AS compras,
+                 SUM(c.quantidade) AS quantidade,
+                 SUM(c.valorTotal) AS valor
+            FROM custos c
+            JOIN materias_primas m ON m.id = c.materiaPrimaId
+           GROUP BY c.materiaPrimaId, c.unidade, m.unidadeBase`,
+  },
+
+  // ---------- Insumos privados da análise (não gravados na saída) ----------
+  {
+    nome: "vendas_valores",
+    privada: true,
+    descricao: "Valor e quantidade de cada venda (para média, mediana e distribuição)",
+    sql: `SELECT valor, quantidade, data FROM vendas`,
+  },
+  {
+    nome: "vendas_por_cliente",
+    privada: true,
+    descricao: "Vendas por cliente (id), para distribuição e recorrência",
+    sql: `SELECT clienteId AS cliente,
+                 COUNT(*) AS vendas,
+                 SUM(quantidade) AS unidades,
+                 COUNT(DISTINCT DATE_FORMAT(data, '%Y-%m')) AS meses_com_compra,
+                 MIN(data) AS primeira,
+                 MAX(data) AS ultima
+            FROM vendas
+           GROUP BY clienteId`,
+  },
+  {
+    nome: "clientes_nomes",
+    privada: true,
+    descricao: "Nomes de clientes, usados só em memória para medir ambiguidade da resolução textual",
+    sql: `SELECT id, nome FROM clientes`,
+  },
+  {
+    nome: "vendas_diarias",
+    privada: true,
+    descricao: "Série diária de vendas",
+    sql: `SELECT DATE(data) AS dia, COUNT(*) AS vendas, SUM(quantidade) AS unidades
+            FROM vendas
+           GROUP BY DATE(data)
+           ORDER BY dia`,
+  },
+  {
+    nome: "vendas_sabor_dia",
+    privada: true,
+    descricao: "Unidades vendidas por sabor e dia (simulação de data de corte)",
+    sql: `SELECT vs.saborId AS sabor_id, DATE(v.data) AS dia, SUM(vs.quantidade) AS unidades
+            FROM venda_sabores vs
+            JOIN vendas v ON v.id = vs.vendaId
+           GROUP BY vs.saborId, DATE(v.data)`,
+  },
+  {
+    nome: "producao_sabor_dia",
+    privada: true,
+    descricao: "Unidades produzidas por sabor e dia (simulação de data de corte)",
+    sql: `SELECT ps.saborId AS sabor_id, DATE(p.data) AS dia, SUM(ps.quantidade) AS unidades
+            FROM producao_sabores ps
+            JOIN producao p ON p.id = ps.producaoId
+           GROUP BY ps.saborId, DATE(p.data)`,
   },
 ];

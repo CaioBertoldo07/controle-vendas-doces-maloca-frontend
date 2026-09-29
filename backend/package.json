@@ -15,6 +15,7 @@
     "db:test:reset": "node scripts/ambiente/prisma.js teste db push --force-reset --skip-generate",
     "test:guardas": "node --test \"scripts/**/*.test.js\"",
     "tcc:coleta": "node scripts/tcc/coletarDadosReadOnly.js",
+    "tcc:restaurar": "node scripts/tcc/restaurarBackupLocal.js",
     "backfill:pagamentos": "node scripts/marcarVendasAntigasPagas.js"
   },
   "keywords": [],

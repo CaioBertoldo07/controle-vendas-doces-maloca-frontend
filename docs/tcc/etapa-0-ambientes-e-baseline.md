@@ -89,7 +89,9 @@ Decisão: um único servidor MySQL local com **dois bancos** (dev e test). Isso 
 
 O `prisma generate` continua rodando onde é necessário: no `postinstall` (toda instalação, inclusive no Railway), no `build` (deploy) e automaticamente no `db:dev:push`.
 
-**Por que não migrations agora:** o projeto nunca usou `prisma migrate`. A pasta `prisma/migrations/*` está no `.gitignore` e o schema de produção foi construído só por `db push`. Adotar migrations exige primeiro criar uma migration *baseline* a partir de produção (`prisma migrate diff` + `prisma migrate resolve --applied`) e decidir o versionamento da pasta. Isso fica como decisão para quando a Etapa 1 for criar as tabelas do SMA. Até lá, qualquer mudança de schema em produção segue o procedimento manual da §8.
+> **Correção (Etapa 0.2):** o banco de produção tem a tabela `_prisma_migrations` com 3 migrations aplicadas em 02/12/2025 (`init`, `add_usuarios`, `add_sabores_e_valor`). Ou seja, `prisma migrate` foi usado no início do projeto e depois abandonado em favor de `db push`. Qualquer adoção futura de migrations precisa reconciliar essa tabela. Ver `docs/tcc/etapa-0-2-analise-dos-dados.md`.
+
+**Por que não migrations agora:** o projeto não usa `prisma migrate` desde dez/2025. A pasta `prisma/migrations/*` está no `.gitignore` e o schema de produção foi construído só por `db push`. Adotar migrations exige primeiro criar uma migration *baseline* a partir de produção (`prisma migrate diff` + `prisma migrate resolve --applied`) e decidir o versionamento da pasta. Isso fica como decisão para quando a Etapa 1 for criar as tabelas do SMA. Até lá, qualquer mudança de schema em produção segue o procedimento manual da §8.
 
 ### 4.2 Proteções
 
