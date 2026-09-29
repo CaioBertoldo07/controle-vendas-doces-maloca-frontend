@@ -1,0 +1,8 @@
+{
+  "descricao": "Baseline da suíte de caracterização. Só altere de forma consciente, registrando o motivo em docs/tcc.",
+  "testes": 202,
+  "arquivos": 11,
+  "pendentesPermitidos": 0,
+  "definidaEm": "2026-09-29",
+  "motivo": "Etapa 0.3: suíte de caracterização inicial (docs/tcc/etapa-0-3-testes-caracterizacao.md)"
+}
