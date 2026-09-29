@@ -1,0 +1,38 @@
+# MySQL local para DESENVOLVIMENTO e TESTE (nunca produção).
+#
+#   cd backend
+#   docker compose up -d        # sobe o banco
+#   docker compose down         # para (mantém os dados)
+#   docker compose down -v      # para e APAGA os dados locais
+#
+# Cria dois bancos no mesmo servidor local:
+#   doces_maloca_dev   -> DATABASE_URL
+#   doces_maloca_test  -> DATABASE_URL_TEST (via docker/mysql/init)
+# Guia: docs/tcc/etapa-0-ambientes-e-baseline.md
+name: doces-maloca-local
+
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: doces-maloca-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root_local}
+      MYSQL_DATABASE: doces_maloca_dev
+      MYSQL_USER: maloca
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-maloca_local}
+      TZ: UTC
+    ports:
+      # Só na interface local; 3307 evita conflito com um MySQL já instalado.
+      - "127.0.0.1:3307:3306"
+    volumes:
+      - mysql_dados:/var/lib/mysql
+      - ./docker/mysql/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  mysql_dados:

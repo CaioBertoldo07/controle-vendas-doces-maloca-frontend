@@ -1,5 +1,9 @@
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcrypt";
+import { garantirAcessoAoBanco } from "../scripts/ambiente/guardas.js";
+
+// O seed APAGA dados: só roda em banco local de desenvolvimento.
+garantirAcessoAoBanco("desenvolvimento", { operacao: "seed (apaga dados)" });
 
 const prisma = new PrismaClient();
 

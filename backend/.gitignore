@@ -6,3 +6,5 @@ prisma/migrations/*
 !prisma/migrations/.gitkeep
 dist/
 build/
+# Saída da coleta read-only da Etapa 0.2 (pode conter dados do negócio)
+.coleta-tcc/

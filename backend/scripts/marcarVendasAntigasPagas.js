@@ -11,8 +11,15 @@
  *
  * Rode UMA VEZ, logo após o deploy que criou a coluna. Se rodar depois,
  * vendas legitimamente pendentes dentro do corte também virariam pagas.
+ *
+ * Desde a Etapa 0 do TCC, este script só roda em banco local de
+ * desenvolvimento (ver docs/tcc/etapa-0-ambientes-e-baseline.md).
  */
 import { PrismaClient } from "@prisma/client";
+import { garantirAcessoAoBanco } from "./ambiente/guardas.js";
+
+// Alteração em massa: bloqueada fora do banco local de desenvolvimento.
+garantirAcessoAoBanco("desenvolvimento", { operacao: "backfill de pagamentos" });
 
 const prisma = new PrismaClient();
 

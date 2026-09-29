@@ -1,2 +1,4 @@
 .vercel
 .env*
+# Modelos de variáveis de ambiente (só placeholders) devem ser versionados
+!.env.example
