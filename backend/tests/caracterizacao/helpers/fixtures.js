@@ -4,23 +4,26 @@
  * prepare só o que precisa. O comportamento sob teste é sempre exercitado
  * pela API ou pela função real do sistema.
  */
-import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { JWT_SECRET_TESTE } from "../setup/ambiente.js";
 import { prisma } from "./db.js";
 
 export const SENHA_TESTE = "senha-ficticia-123";
 
+// Hash bcrypt (custo 4) pré-calculado da SENHA_TESTE fictícia. O processo de
+// teste não carrega o addon nativo do bcrypt (ver docs/tcc/etapa-0-4, seção de
+// testes); a verificação real da senha continua no servidor, com bcrypt.compare.
+const HASH_SENHA_TESTE = "$2b$04$LcOZaLUW7WfNjmmjpQYZB.tEYGsCCARBoprfDAwOp0.AENCEsxiva";
+
 // ---------- Usuário / autenticação ----------
 export async function criarUsuario({
   nome = "Gestora Fictícia",
   email = "gestora@exemplo.test",
-  senha = SENHA_TESTE,
 } = {}) {
   const usuario = await prisma.usuario.create({
-    data: { nome, email, senha: await bcrypt.hash(senha, 4) },
+    data: { nome, email, senha: HASH_SENHA_TESTE },
   });
-  return { usuario, senha };
+  return { usuario, senha: SENHA_TESTE };
 }
 
 export function tokenPara(usuario, payloadExtra = {}) {

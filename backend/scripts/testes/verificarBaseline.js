@@ -7,6 +7,14 @@
  * completo: todos os arquivos, todos os testes, nenhum falho ou pendente.
  */
 
+/**
+ * Assinatura da queda nativa intermitente do processo de teste no Windows
+ * (0xC0000409 = 3221226505), investigada na Etapa 0.4. Só ela justifica
+ * refazer a suíte; qualquer outra falha é definitiva.
+ */
+const ASSINATURA_QUEDA_NATIVA = /Worker exited unexpectedly with exit code 3221226505\b/;
+export const ehQuedaNativa = (saida) => ASSINATURA_QUEDA_NATIVA.test(String(saida ?? ""));
+
 /** Devolve a lista de divergências (vazia = aprovado). Função pura. */
 export function verificarResultado(resultado, baseline) {
   const motivos = [];

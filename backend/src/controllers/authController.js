@@ -1,8 +1,11 @@
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "../lib/prisma.js";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
+import { responderErroDominio } from "../lib/erros.js";
+import * as authService from "../services/authService.js";
 
-const prisma = new PrismaClient();
+// `registro` não tem rota desde o commit e0f7b64 (cadastro bloqueado): é
+// código morto, mantido intocado na Etapa 0.4.
 
 export const registro = async (req, res) => {
   try {
@@ -53,41 +56,14 @@ export const registro = async (req, res) => {
 
 export const login = async (req, res) => {
   try {
-    const { email, senha } = req.body;
-
-    // Buscar usuário
-    const usuario = await prisma.usuario.findUnique({
-      where: { email },
-    });
-
-    if (!usuario) {
-      return res.status(401).json({ error: "Email ou senha inválidos" });
-    }
-
-    // Verificar senha
-    const senhaValida = await bcrypt.compare(senha, usuario.senha);
-
-    if (!senhaValida) {
-      return res.status(401).json({ error: "Email ou senha inválidos" });
-    }
-
-    // Gerar token
-    const token = jwt.sign(
-      { id: usuario.id, email: usuario.email },
-      process.env.JWT_SECRET,
-      { expiresIn: "7d" }
-    );
-
+    const { token, usuario } = await authService.autenticar(req.body);
     res.json({
       message: "Login realizado com sucesso",
       token,
-      usuario: {
-        id: usuario.id,
-        nome: usuario.nome,
-        email: usuario.email,
-      },
+      usuario,
     });
   } catch (error) {
+    if (responderErroDominio(res, error)) return;
     console.error("Erro no login:", error);
     res.status(500).json({ error: "Erro ao fazer login" });
   }

@@ -1,93 +1,20 @@
-import { PrismaClient } from "@prisma/client";
-import { parse } from "dotenv";
-import { resolverCliente, resolverSabores } from "../services/resolverNomes.js";
-
-const prisma = new PrismaClient();
+// HTTP das vendas. A regra está em services/vendasService.js.
+import { responderErroDominio } from "../lib/erros.js";
+import * as vendasService from "../services/vendasService.js";
 
 export const criarVendaAuto = async (req, res) => {
   try {
-    const {
-      clienteNome, // "Frutaria Laranjeiras - nome em texto"
-      sabores, // [{ nome: "Tradicional", quantidade: 20 }]
-      valor,
-      desconto = 0,
-      data,
-      pago = false, // venda nasce pendente; é marcada como paga em Relatórios
-      idempotencyKey, // chave única enviada pelo n8n para evitar duplicata
-    } = req.body;
+    const resultado = await vendasService.criarVendaPorTexto(req.body);
 
-    // --- Validações básicas ---
-    if (!clienteNome?.trim()) {
-      return res.status(400).json({ error: "clienteNome é obrigatório" });
-    }
-    if (!sabores || sabores.length === 0) {
-      return res.status(400).json({ error: "Informe ao menos um sabor" });
-    }
-    if (!valor || parseFloat(valor) <= 0) {
-      return res.status(400).json({ error: "Valor inválido" });
-    }
-
-    // --- Idempotência: rejeita duplicata ---
-    if (idempotencyKey) {
-      const vendaExistente = await prisma.venda.findFirst({
-        where: { idempotencyKey },
-      });
-      if (vendaExistente) {
-        return res.status(200).json({
-          message: "Venda já registrada anteriormente (idempotente)",
-          venda: vendaExistente,
-          duplicata: true,
-        });
-      }
-    }
-
-    // --- Resolver Cliente ---
-    const cliente = await resolverCliente(clienteNome);
-    if (!cliente) {
-      return res.status(404).json({
-        error: `Cliente não encontrado: "${clienteNome}"`,
-        sugestao: "Verifique o nome ou cadastre o cliente primeiro",
+    if (resultado.duplicata) {
+      return res.status(200).json({
+        message: "Venda já registrada anteriormente (idempotente)",
+        venda: resultado.venda,
+        duplicata: true,
       });
     }
 
-    // --- Resolver Sabores ---
-    const { sabores: saboresResolvidos, naoEncontrados } =
-      await resolverSabores(sabores);
-    if (naoEncontrados.length > 0) {
-      return res.status(404).json({
-        error: "Sabores não encontrados",
-        naoEncontrados,
-        encontrados: saboresResolvidos.length,
-      });
-    }
-
-    const quantidadeTotal = saboresResolvidos.reduce(
-      (s, i) => s + i.quantidade,
-      0,
-    );
-
-    // --- Criar Venda ---
-    const foiPago = pago === true || pago === "true";
-    const venda = await prisma.venda.create({
-      data: {
-        clienteId: cliente.id,
-        quantidade: quantidadeTotal,
-        valor: parseFloat(valor),
-        desconto: parseFloat(desconto),
-        data: data ? new Date(data) : new Date(),
-        pago: foiPago,
-        dataPagamento: foiPago ? new Date() : null,
-        idempotencyKey: idempotencyKey || null,
-        sabores: {
-          create: saboresResolvidos,
-        },
-      },
-      include: {
-        cliente: true,
-        sabores: { include: { sabor: true } },
-      },
-    });
-
+    const { venda, cliente, saboresResolvidos } = resultado;
     console.log(
       `✅ [AUTO] Venda registrada via n8n: ${venda.id} - ${cliente.nome}`,
     );
@@ -101,6 +28,7 @@ export const criarVendaAuto = async (req, res) => {
       },
     });
   } catch (error) {
+    if (responderErroDominio(res, error)) return;
     console.error("❌ [AUTO] Erro ao criar venda:", error);
     return res
       .status(500)
@@ -110,67 +38,11 @@ export const criarVendaAuto = async (req, res) => {
 
 export const criarVenda = async (req, res) => {
   try {
-    const {
-      clienteId,
-      quantidade,
-      valor,
-      desconto,
-      data,
-      sabores,
-      pago = false,
-    } = req.body;
-
-    // Validações
-    if (
-      !clienteId ||
-      !quantidade ||
-      !valor ||
-      !sabores ||
-      sabores.length === 0
-    ) {
-      return res.status(400).json({ error: "Dados incompletos" });
-    }
-
-    // Verificar se o cliente existe
-    const cliente = await prisma.cliente.findUnique({
-      where: { id: parseInt(clienteId) },
-    });
-
-    if (!cliente) {
-      return res.status(404).json({ error: "Cliente não encontrado" });
-    }
-
-    // Criar venda com sabores
-    const foiPago = pago === true || pago === "true";
-    const venda = await prisma.venda.create({
-      data: {
-        clienteId: parseInt(clienteId),
-        quantidade: parseInt(quantidade),
-        valor: parseFloat(valor),
-        desconto: parseFloat(desconto || 0),
-        data: data ? new Date(data) : new Date(),
-        pago: foiPago,
-        dataPagamento: foiPago ? new Date() : null,
-        sabores: {
-          create: sabores.map((s) => ({
-            saborId: parseInt(s.saborId),
-            quantidade: parseInt(s.quantidade),
-          })),
-        },
-      },
-      include: {
-        cliente: true,
-        sabores: {
-          include: {
-            sabor: true,
-          },
-        },
-      },
-    });
-
+    const venda = await vendasService.criarVenda(req.body);
     console.log("✅ Venda criada:", venda);
     res.status(201).json(venda);
   } catch (error) {
+    if (responderErroDominio(res, error)) return;
     console.error("❌ Erro ao criar venda:", error);
     res
       .status(500)
@@ -180,46 +52,7 @@ export const criarVenda = async (req, res) => {
 
 export const listarVendas = async (req, res) => {
   try {
-    const { mes, ano, clienteId, dataInicio, dataFim, limit, pago } = req.query;
-
-    let where = {};
-
-    if (pago === "true" || pago === "false") {
-      where.pago = pago === "true";
-    }
-
-    if (mes && ano) {
-      const startDate = new Date(ano, mes - 1, 1);
-      const endDate = new Date(ano, mes, 0, 23, 59, 59);
-      where.data = { gte: startDate, lte: endDate };
-    }
-
-    if (dataInicio && dataFim) {
-      where.data = {
-        gte: new Date(dataInicio),
-        lte: new Date(dataFim + "T23:59:59"),
-      };
-    }
-
-    if (clienteId) {
-      where.clienteId = parseInt(clienteId);
-    }
-
-    const vendas = await prisma.venda.findMany({
-      where,
-      include: {
-        cliente: true,
-        sabores: {
-          include: {
-            sabor: true,
-          },
-        },
-      },
-      orderBy: { data: "desc" },
-      take: limit ? parseInt(limit) : undefined,
-    });
-
-    res.json(vendas);
+    res.json(await vendasService.listarVendas(req.query));
   } catch (error) {
     console.error("Erro ao listar vendas:", error);
     res.status(500).json({ error: "Erro ao buscar vendas" });
@@ -228,26 +61,9 @@ export const listarVendas = async (req, res) => {
 
 export const buscarVenda = async (req, res) => {
   try {
-    const { id } = req.params;
-
-    const venda = await prisma.venda.findUnique({
-      where: { id: parseInt(id) },
-      include: {
-        cliente: true,
-        sabores: {
-          include: {
-            sabor: true,
-          },
-        },
-      },
-    });
-
-    if (!venda) {
-      return res.status(404).json({ error: "Venda não encontrada" });
-    }
-
-    res.json(venda);
+    res.json(await vendasService.buscarVenda(req.params.id));
   } catch (error) {
+    if (responderErroDominio(res, error)) return;
     console.error("Erro ao buscar venda:", error);
     res.status(500).json({ error: "Erro ao buscar venda" });
   }
@@ -255,62 +71,9 @@ export const buscarVenda = async (req, res) => {
 
 export const atualizarVenda = async (req, res) => {
   try {
-    const { id } = req.params;
-    const { clienteId, quantidade, valor, desconto, data, sabores, pago } =
-      req.body;
-
-    const vendaExiste = await prisma.venda.findUnique({
-      where: { id: parseInt(id) },
-    });
-
-    if (!vendaExiste) {
-      return res.status(404).json({ error: "Venda não encontrada" });
-    }
-
-    // Deletar sabores antigos
-    await prisma.vendaSabor.deleteMany({
-      where: { vendaId: parseInt(id) },
-    });
-
-    // Atualizar venda e criar novos sabores
-    const venda = await prisma.venda.update({
-      where: { id: parseInt(id) },
-      data: {
-        ...(clienteId && { clienteId: parseInt(clienteId) }),
-        ...(quantidade && { quantidade: parseInt(quantidade) }),
-        ...(valor && { valor: parseFloat(valor) }),
-        // desconto usa checagem explícita: 0 é um valor válido (remover o desconto)
-        ...(desconto !== undefined && { desconto: parseFloat(desconto) || 0 }),
-        ...(data && { data: new Date(data) }),
-        // pago usa checagem explícita: false é um valor válido (voltar a pendente)
-        ...(pago !== undefined && {
-          pago: pago === true || pago === "true",
-          dataPagamento:
-            pago === true || pago === "true"
-              ? vendaExiste.dataPagamento || new Date()
-              : null,
-        }),
-        ...(sabores && {
-          sabores: {
-            create: sabores.map((s) => ({
-              saborId: parseInt(s.saborId),
-              quantidade: parseInt(s.quantidade),
-            })),
-          },
-        }),
-      },
-      include: {
-        cliente: true,
-        sabores: {
-          include: {
-            sabor: true,
-          },
-        },
-      },
-    });
-
-    res.json(venda);
+    res.json(await vendasService.atualizarVenda(req.params.id, req.body));
   } catch (error) {
+    if (responderErroDominio(res, error)) return;
     console.error("Erro ao atualizar venda:", error);
     res.status(500).json({ error: "Erro ao atualizar venda" });
   }
@@ -319,47 +82,9 @@ export const atualizarVenda = async (req, res) => {
 // PATCH /api/vendas/:id/pagamento - marca a venda como paga ou volta para pendente
 export const atualizarPagamento = async (req, res) => {
   try {
-    const { id } = req.params;
-    const { pago, dataPagamento } = req.body;
-
-    if (pago === undefined) {
-      return res.status(400).json({ error: "Campo 'pago' é obrigatório" });
-    }
-
-    const vendaExiste = await prisma.venda.findUnique({
-      where: { id: parseInt(id) },
-    });
-
-    if (!vendaExiste) {
-      return res.status(404).json({ error: "Venda não encontrada" });
-    }
-
-    const foiPago = pago === true || pago === "true";
-
-    const venda = await prisma.venda.update({
-      where: { id: parseInt(id) },
-      data: {
-        pago: foiPago,
-        // Ao marcar como paga registra o momento do recebimento;
-        // ao voltar para pendente a data é limpa.
-        dataPagamento: foiPago
-          ? dataPagamento
-            ? new Date(dataPagamento)
-            : vendaExiste.dataPagamento || new Date()
-          : null,
-      },
-      include: {
-        cliente: true,
-        sabores: {
-          include: {
-            sabor: true,
-          },
-        },
-      },
-    });
-
-    res.json(venda);
+    res.json(await vendasService.atualizarPagamento(req.params.id, req.body));
   } catch (error) {
+    if (responderErroDominio(res, error)) return;
     console.error("Erro ao atualizar pagamento:", error);
     res.status(500).json({ error: "Erro ao atualizar pagamento da venda" });
   }
@@ -367,22 +92,10 @@ export const atualizarPagamento = async (req, res) => {
 
 export const deletarVenda = async (req, res) => {
   try {
-    const { id } = req.params;
-
-    const venda = await prisma.venda.findUnique({
-      where: { id: parseInt(id) },
-    });
-
-    if (!venda) {
-      return res.status(404).json({ error: "Venda não encontrada" });
-    }
-
-    await prisma.venda.delete({
-      where: { id: parseInt(id) },
-    });
-
+    await vendasService.excluirVenda(req.params.id);
     res.json({ message: "Venda deletada com sucesso" });
   } catch (error) {
+    if (responderErroDominio(res, error)) return;
     console.error("Erro ao deletar venda:", error);
     res.status(500).json({ error: "Erro ao deletar venda" });
   }
@@ -390,64 +103,7 @@ export const deletarVenda = async (req, res) => {
 
 export const obterTotais = async (req, res) => {
   try {
-    const { mes, ano, clienteId } = req.query;
-
-    let where = {};
-
-    if (mes && ano) {
-      const startDate = new Date(ano, mes - 1, 1);
-      const endDate = new Date(ano, mes, 0, 23, 59, 59);
-      where.data = { gte: startDate, lte: endDate };
-    }
-
-    if (clienteId) {
-      where.clienteId = parseInt(clienteId);
-    }
-
-    const vendas = await prisma.venda.findMany({
-      where,
-      include: { cliente: true },
-    });
-
-    const totalGeral = vendas.reduce((sum, v) => sum + v.quantidade, 0);
-    const valorTotal = vendas.reduce((sum, v) => sum + parseFloat(v.valor), 0);
-
-    // Faturamento considera apenas o que já foi recebido; o resto é "a receber"
-    const vendasPagas = vendas.filter((v) => v.pago);
-    const vendasPendentes = vendas.filter((v) => !v.pago);
-    const valorPago = vendasPagas.reduce((sum, v) => sum + parseFloat(v.valor), 0);
-    const valorPendente = vendasPendentes.reduce(
-      (sum, v) => sum + parseFloat(v.valor),
-      0,
-    );
-
-    const porCliente = vendas.reduce((acc, v) => {
-      const nome = v.cliente.nome;
-      acc[nome] = (acc[nome] || 0) + v.quantidade;
-      return acc;
-    }, {});
-
-    const porDia = vendas.reduce((acc, v) => {
-      const dia = new Date(v.data).toLocaleDateString("pt-BR");
-      acc[dia] = (acc[dia] || 0) + v.quantidade;
-      return acc;
-    }, {});
-
-    res.json({
-      totalGeral,
-      valorTotal: valorTotal.toFixed(2),
-      valorPago: valorPago.toFixed(2),
-      valorPendente: valorPendente.toFixed(2),
-      totalVendas: vendas.length,
-      totalVendasPagas: vendasPagas.length,
-      totalVendasPendentes: vendasPendentes.length,
-      porCliente,
-      porDia,
-      media:
-        vendas.length > 0
-          ? Math.round((totalGeral / vendas.length) * 100) / 100
-          : 0,
-    });
+    res.json(await vendasService.obterTotais(req.query));
   } catch (error) {
     console.error("Erro ao calcular totais:", error);
     res.status(500).json({ error: "Erro ao calcular totais" });
@@ -456,45 +112,7 @@ export const obterTotais = async (req, res) => {
 
 export const relatorioMensal = async (req, res) => {
   try {
-    const { ano } = req.query;
-    const anoAtual = ano ? parseInt(ano) : new Date().getFullYear();
-
-    const meses = [];
-
-    for (let mes = 1; mes <= 12; mes++) {
-      const startDate = new Date(anoAtual, mes - 1, 1);
-      const endDate = new Date(anoAtual, mes, 0, 23, 59, 59);
-
-      const vendas = await prisma.venda.findMany({
-        where: {
-          data: { gte: startDate, lte: endDate },
-        },
-      });
-
-      const total = vendas.reduce((sum, v) => sum + v.quantidade, 0);
-      const valorTotal = vendas.reduce(
-        (sum, v) => sum + parseFloat(v.valor),
-        0,
-      );
-      const valorPago = vendas
-        .filter((v) => v.pago)
-        .reduce((sum, v) => sum + parseFloat(v.valor), 0);
-
-      meses.push({
-        mes,
-        nomeMes: startDate.toLocaleString("pt-BR", { month: "long" }),
-        totalVendas: vendas.length,
-        totalQuantidade: total,
-        valorTotal: valorTotal.toFixed(2),
-        valorPago: valorPago.toFixed(2),
-        valorPendente: (valorTotal - valorPago).toFixed(2),
-      });
-    }
-
-    res.json({
-      ano: anoAtual,
-      meses,
-    });
+    res.json(await vendasService.relatorioMensal(req.query));
   } catch (error) {
     console.error("Erro ao gerar relatório mensal:", error);
     res.status(500).json({ error: "Erro ao gerar relatório mensal" });

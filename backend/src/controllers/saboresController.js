@@ -1,20 +1,10 @@
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
+// HTTP dos sabores e receitas. A regra está em services/saboresService.js.
+import { responderErroDominio } from "../lib/erros.js";
+import * as saboresService from "../services/saboresService.js";
 
 export const listarSabores = async (req, res) => {
   try {
-    const { todos } = req.query;
-    const where = todos === "true" ? {} : { ativo: true };
-
-    const sabores = await prisma.sabor.findMany({
-      where,
-      orderBy: { nome: "asc" },
-      include: {
-        _count: { select: { vendaSabores: true } },
-      },
-    });
-    res.json(sabores);
+    res.json(await saboresService.listarSabores(req.query));
   } catch (error) {
     console.error("Erro ao listar sabores:", error);
     res.status(500).json({ error: "Erro ao buscar sabores" });
@@ -23,59 +13,20 @@ export const listarSabores = async (req, res) => {
 
 export const buscarSabor = async (req, res) => {
   try {
-    const { id } = req.params;
-    const sabor = await prisma.sabor.findUnique({
-      where: { id: parseInt(id) },
-      include: {
-        _count: { select: { vendaSabores: true } },
-      },
-    });
-
-    if (!sabor) return res.status(404).json({ error: "Sabor não encontrado" });
-
-    res.json(sabor);
+    res.json(await saboresService.buscarSabor(req.params.id));
   } catch (error) {
+    if (responderErroDominio(res, error)) return;
     res.status(500).json({ error: "Erro ao buscar sabor" });
   }
 };
 
 export const criarSabor = async (req, res) => {
   try {
-    const { nome, precoUnitario } = req.body;
-
-    if (!nome || nome.trim() === "") {
-      return res.status(400).json({ error: "Nome do sabor é obrigatório" });
-    }
-
-    if (
-      !precoUnitario ||
-      isNaN(precoUnitario) ||
-      parseFloat(precoUnitario) <= 0
-    ) {
-      return res.status(400).json({ error: "Preço unitário inválido" });
-    }
-
-    const existe = await prisma.sabor.findFirst({
-      where: { nome: { equals: nome.trim() } },
-    });
-
-    if (existe) {
-      return res
-        .status(400)
-        .json({ error: "Já existe um sabor com este nome" });
-    }
-
-    const sabor = await prisma.sabor.create({
-      data: {
-        nome: nome.trim(),
-        precoUnitario: parseFloat(precoUnitario),
-        ativo: true,
-      },
-    });
-
+    const sabor = await saboresService.criarSabor(req.body);
     console.log("✅ Sabor criado:", sabor);
     res.status(201).json(sabor);
   } catch (error) {
+    if (responderErroDominio(res, error)) return;
     console.error("❌ Erro ao criar sabor:", error);
     res.status(500).json({ error: "Erro ao criar sabor: " + error.message });
   }
@@ -83,29 +34,11 @@ export const criarSabor = async (req, res) => {
 
 export const atualizarSabor = async (req, res) => {
   try {
-    const { id } = req.params;
-    const { nome, precoUnitario, ativo } = req.body;
-
-    const existe = await prisma.sabor.findUnique({
-      where: { id: parseInt(id) },
-    });
-
-    if (!existe) return res.status(404).json({ error: "Sabor não encontrado" });
-
-    const data = {};
-    if (nome !== undefined) data.nome = nome.trim();
-    if (precoUnitario !== undefined)
-      data.precoUnitario = parseFloat(precoUnitario);
-    if (ativo !== undefined) data.ativo = Boolean(ativo);
-
-    const sabor = await prisma.sabor.update({
-      where: { id: parseInt(id) },
-      data,
-    });
-
+    const sabor = await saboresService.atualizarSabor(req.params.id, req.body);
     console.log("✅ Sabor atualizado:", sabor);
     res.json(sabor);
   } catch (error) {
+    if (responderErroDominio(res, error)) return;
     console.error("❌ Erro ao atualizar sabor:", error);
     res
       .status(500)
@@ -115,30 +48,17 @@ export const atualizarSabor = async (req, res) => {
 
 export const deletarSabor = async (req, res) => {
   try {
-    const { id } = req.params;
-
-    const sabor = await prisma.sabor.findUnique({
-      where: { id: parseInt(id) },
-      include: { _count: { select: { vendaSabores: true } } },
-    });
-
-    if (!sabor) return res.status(404).json({ error: "Sabor não encontrado" });
-
-    if (sabor._count.vendaSabores > 0) {
-      const atualizado = await prisma.sabor.update({
-        where: { id: parseInt(id) },
-        data: { ativo: false },
-      });
+    const resultado = await saboresService.excluirSabor(req.params.id);
+    if (resultado.desativado) {
       return res.json({
         message: "Sabor desativado pois possui vendas vinculadas",
-        sabor: atualizado,
+        sabor: resultado.sabor,
         desativado: true,
       });
     }
-
-    await prisma.sabor.delete({ where: { id: parseInt(id) } });
     res.json({ message: "Sabor deletado com sucesso" });
   } catch (error) {
+    if (responderErroDominio(res, error)) return;
     console.error("❌ Erro ao deletar sabor:", error);
     res.status(500).json({ error: "Erro ao deletar sabor: " + error.message });
   }
@@ -146,62 +66,18 @@ export const deletarSabor = async (req, res) => {
 
 export const listarReceita = async (req, res) => {
   try {
-    const { id } = req.params;
-    const sabor = await prisma.sabor.findUnique({ where: { id: parseInt(id) } });
-    if (!sabor) return res.status(404).json({ error: "Sabor não encontrado" });
-
-    const itens = await prisma.receitaItem.findMany({
-      where: { saborId: parseInt(id) },
-      include: { materiaPrima: true },
-      orderBy: { id: "asc" },
-    });
-
-    res.json({ rendimentoBase: sabor.rendimentoBase, itens });
+    res.json(await saboresService.obterReceita(req.params.id));
   } catch (error) {
+    if (responderErroDominio(res, error)) return;
     res.status(500).json({ error: "Erro ao buscar receita" });
   }
 };
 
 export const salvarReceita = async (req, res) => {
   try {
-    const { id } = req.params;
-    const { rendimentoBase, itens } = req.body;
-
-    if (!rendimentoBase || parseInt(rendimentoBase) <= 0) {
-      return res.status(400).json({ error: "Rendimento base inválido" });
-    }
-
-    const sabor = await prisma.sabor.findUnique({ where: { id: parseInt(id) } });
-    if (!sabor) return res.status(404).json({ error: "Sabor não encontrado" });
-
-    await prisma.$transaction(async (tx) => {
-      await tx.sabor.update({
-        where: { id: parseInt(id) },
-        data: { rendimentoBase: parseInt(rendimentoBase) },
-      });
-
-      await tx.receitaItem.deleteMany({ where: { saborId: parseInt(id) } });
-
-      if (itens && itens.length > 0) {
-        await tx.receitaItem.createMany({
-          data: itens.map((item) => ({
-            saborId: parseInt(id),
-            materiaPrimaId: parseInt(item.materiaPrimaId),
-            quantidadeBase: parseFloat(item.quantidadeBase),
-          })),
-        });
-      }
-    });
-
-    const itensAtualizados = await prisma.receitaItem.findMany({
-      where: { saborId: parseInt(id) },
-      include: { materiaPrima: true },
-      orderBy: { id: "asc" },
-    });
-    const saborAtualizado = await prisma.sabor.findUnique({ where: { id: parseInt(id) } });
-
-    res.json({ rendimentoBase: saborAtualizado.rendimentoBase, itens: itensAtualizados });
+    res.json(await saboresService.salvarReceita(req.params.id, req.body));
   } catch (error) {
+    if (responderErroDominio(res, error)) return;
     res.status(500).json({ error: "Erro ao salvar receita: " + error.message });
   }
 };

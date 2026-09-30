@@ -52,3 +52,15 @@ test("falhas e relatório inválido são reprovados", () => {
   assert.ok(verificarResultado(relatorio({ status: "failed", sucesso: false }), baseline).length > 0);
   assert.deepEqual(verificarResultado(null, baseline), ["relatório JSON do Vitest ausente ou inválido"]);
 });
+
+test("ehQuedaNativa reconhece só a queda 0xC0000409 do worker", async () => {
+  const { ehQuedaNativa } = await import("./verificarBaseline.js");
+  // Mensagem real capturada na Etapa 0.4 (caminhos abreviados)
+  const real =
+    "Caused by: Error: Worker exited unexpectedly with exit code 3221226505 during started state while running test files C:/x/tests/caracterizacao/producao.test.js";
+  assert.equal(ehQuedaNativa(real), true);
+  assert.equal(ehQuedaNativa("Worker exited unexpectedly with exit code 134 during started state"), false);
+  assert.equal(ehQuedaNativa("AssertionError: expected 201 to be 200"), false);
+  assert.equal(ehQuedaNativa("Worker exited unexpectedly with exit code 32212265050"), false);
+  assert.equal(ehQuedaNativa(undefined), false);
+});
