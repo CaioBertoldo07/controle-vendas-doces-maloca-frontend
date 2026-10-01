@@ -142,3 +142,123 @@ model ProducaoSabor {
   @@index([saborId])
   @@map("producao_sabores")
 }
+
+// ============================================================================
+// Camada SMA (Etapa 1): auditoria das execuções de agentes, cooperação,
+// recomendações e ações propostas. Tabelas aditivas: nenhum modelo de domínio
+// acima foi alterado. Ver docs/tcc/etapa-1-infraestrutura-multiagente.md.
+// Datas: instantes técnicos em UTC (como criadoEm), não datas de negócio.
+// ============================================================================
+
+/// Uma execução de um agente (pelo HTTP, pelo Coordenador ou por mensagem).
+model ExecucaoAgente {
+  id            Int              @id @default(autoincrement())
+  agente        String           @db.VarChar(50)
+  tipoExecucao  String           @db.VarChar(50) // ex.: PING, DIAGNOSTICO, PERGUNTA
+  gatilho       String           @db.VarChar(20) // HTTP | MENSAGEM | INTERNO (CRON/EVENTO no futuro)
+  status        String           @db.VarChar(20) // EM_ANDAMENTO | SUCESSO | FALHA
+  iniciadaEm    DateTime         @default(now())
+  finalizadaEm  DateTime?
+  duracaoMs     Int?
+  entrada       Json?
+  saida         Json?
+  erro          String?          @db.Text
+  metadados     Json?
+  execucaoPaiId Int?
+  execucaoPai   ExecucaoAgente?  @relation("Delegacao", fields: [execucaoPaiId], references: [id], onDelete: SetNull)
+  filhas        ExecucaoAgente[] @relation("Delegacao")
+  chamadasTool  ChamadaTool[]
+  mensagens     MensagemAgente[] @relation("MensagensEnviadas")
+  recebidas     MensagemAgente[] @relation("MensagensRecebidas")
+  recomendacoes Recomendacao[]
+  acoes         AcaoProposta[]
+
+  @@index([agente])
+  @@index([status])
+  @@index([iniciadaEm])
+  @@index([execucaoPaiId])
+  @@map("execucoes_agente")
+}
+
+/// Uma chamada de tool dentro de uma execução (pelo agente ou pelo LLM).
+model ChamadaTool {
+  id         Int            @id @default(autoincrement())
+  execucaoId Int
+  execucao   ExecucaoAgente @relation(fields: [execucaoId], references: [id], onDelete: Cascade)
+  tool       String         @db.VarChar(80)
+  origem     String         @db.VarChar(20) // AGENTE | LLM
+  entrada    Json?
+  ok         Boolean
+  saida      Json?
+  erro       String?        @db.Text
+  duracaoMs  Int
+  criadaEm   DateTime       @default(now())
+
+  @@index([execucaoId])
+  @@index([tool])
+  @@map("chamadas_tool")
+}
+
+/// Mensagem explícita entre agentes (cooperação).
+model MensagemAgente {
+  id                Int             @id @default(autoincrement())
+  execucaoId        Int
+  execucao          ExecucaoAgente  @relation("MensagensEnviadas", fields: [execucaoId], references: [id], onDelete: Cascade)
+  execucaoDestinoId Int?
+  execucaoDestino   ExecucaoAgente? @relation("MensagensRecebidas", fields: [execucaoDestinoId], references: [id], onDelete: SetNull)
+  agenteOrigem      String          @db.VarChar(50)
+  agenteDestino     String          @db.VarChar(50)
+  tipo              String          @db.VarChar(50)
+  conteudo          Json?
+  status            String          @db.VarChar(20) // ENVIADA | RESPONDIDA | FALHA
+  resposta          Json?
+  criadaEm          DateTime        @default(now())
+
+  @@index([execucaoId])
+  @@index([agenteOrigem, agenteDestino])
+  @@map("mensagens_agente")
+}
+
+/// Recomendação produzida por um agente para o gestor (não altera dados).
+model Recomendacao {
+  id          Int             @id @default(autoincrement())
+  agente      String          @db.VarChar(50)
+  execucaoId  Int?
+  execucao    ExecucaoAgente? @relation(fields: [execucaoId], references: [id], onDelete: SetNull)
+  tipo        String          @db.VarChar(50)
+  titulo      String          @db.VarChar(200)
+  descricao   String          @db.Text
+  prioridade  String          @db.VarChar(10) // BAIXA | MEDIA | ALTA
+  status      String          @default("ABERTA") @db.VarChar(20) // ABERTA | RESOLVIDA | DESCARTADA
+  dados       Json?
+  criadaEm    DateTime        @default(now())
+  resolvidaEm DateTime?
+
+  @@index([status])
+  @@index([agente])
+  @@map("recomendacoes")
+}
+
+/// Única forma de um agente pedir uma escrita: nasce PENDENTE e só um
+/// executor determinístico a executa, depois da aprovação do gestor.
+model AcaoProposta {
+  id              Int             @id @default(autoincrement())
+  tipo            String          @db.VarChar(50) // allowlist em src/agents/acoes/contratos.js
+  payload         Json
+  descricao       String          @db.Text
+  status          String          @default("PENDENTE") @db.VarChar(20) // PENDENTE | APROVADA | REJEITADA | EXECUTANDO | EXECUTADA | FALHA
+  criadaPorAgente String          @db.VarChar(50)
+  execucaoId      Int?
+  execucao        ExecucaoAgente? @relation(fields: [execucaoId], references: [id], onDelete: SetNull)
+  criadaEm        DateTime        @default(now())
+  aprovadaEm      DateTime?
+  rejeitadaEm     DateTime?
+  motivoRejeicao  String?         @db.VarChar(500)
+  executadaEm     DateTime?
+  resultado       Json?
+  erro            String?         @db.Text
+
+  @@index([status])
+  @@index([criadaPorAgente])
+  @@map("acoes_propostas")
+}

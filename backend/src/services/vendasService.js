@@ -337,6 +337,14 @@ export async function obterTotais({ mes, ano, clienteId } = {}) {
     include: { cliente: true },
   });
 
+  return agregarTotais(vendas);
+}
+
+/**
+ * Totais de uma lista de vendas (com `cliente`), no formato de /vendas/totais.
+ * Pura; usada por obterTotais e por resumoVendasPeriodo (tools dos agentes).
+ */
+export function agregarTotais(vendas) {
   const totalGeral = vendas.reduce((sum, v) => sum + v.quantidade, 0);
   const valorTotal = vendas.reduce((sum, v) => sum + parseFloat(v.valor), 0);
 
@@ -369,6 +377,33 @@ export async function obterTotais({ mes, ano, clienteId } = {}) {
     porDia,
     media: vendas.length > 0 ? Math.round((totalGeral / vendas.length) * 100) / 100 : 0,
   };
+}
+
+/**
+ * Totais de um intervalo de dias civis (dataInicio..dataFim, inclusive), com
+ * cliente opcional. Mesma agregação de /vendas/totais (Etapa 1: tools).
+ */
+export async function resumoVendasPeriodo({ dataInicio, dataFim, clienteId } = {}) {
+  const { inicio, fimExclusivo } = intervaloEntreDatas(dataInicio, dataFim);
+  const vendas = await prisma.venda.findMany({
+    where: { data: { gte: inicio, lt: fimExclusivo }, ...(clienteId && { clienteId: parseInt(clienteId) }) },
+    include: { cliente: true },
+  });
+  return agregarTotais(vendas);
+}
+
+/**
+ * Recebíveis: vendas pendentes (pago = false), da mais antiga para a mais
+ * recente, e o valor total a receber (Etapa 1: tools).
+ */
+export async function obterRecebiveis() {
+  const vendas = await prisma.venda.findMany({
+    where: { pago: false },
+    include: { cliente: true },
+    orderBy: [{ data: "asc" }, { id: "asc" }],
+  });
+  const { valorPendente } = agregarTotais(vendas);
+  return { vendas, valorPendente };
 }
 
 /** Série dos 12 meses do ano: vendas, unidades, valor total, pago e pendente. */

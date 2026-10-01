@@ -1,11 +1,12 @@
 {
   "descricao": "Baseline da suíte de caracterização. Só altere de forma consciente, registrando o motivo em docs/tcc.",
-  "testes": 265,
-  "arquivos": 13,
+  "testes": 344,
+  "arquivos": 20,
   "pendentesPermitidos": 0,
   "definidaEm": "2026-10-01",
-  "motivo": "Etapa 0.6: +33 testes de invariantes (vendas +12, resolverNomes +10, vendasAuto +6, producao +5). Nenhum teste removido (docs/tcc/etapa-0-6-invariantes-criticas.md)",
+  "motivo": "Etapa 1: +79 testes da infraestrutura multiagente em tests/sma (7 arquivos: registroRuntime 16, tools 16, agentesHttp 15, acoes 14, llm 10, mensagens 4, coordenador 4). Os 265 anteriores intactos (docs/tcc/etapa-1-infraestrutura-multiagente.md)",
   "historico": [
+    { "testes": 265, "arquivos": 13, "definidaEm": "2026-10-01", "motivo": "Etapa 0.6: +33 testes de invariantes (docs/tcc/etapa-0-6-invariantes-criticas.md)" },
     { "testes": 232, "arquivos": 13, "definidaEm": "2026-09-30", "motivo": "Etapa 0.5: +30 testes da política temporal (docs/tcc/etapa-0-5-politica-temporal.md)" },
     { "testes": 202, "arquivos": 11, "definidaEm": "2026-09-29", "motivo": "Etapa 0.3: suíte de caracterização inicial (docs/tcc/etapa-0-3-testes-caracterizacao.md)" }
   ]

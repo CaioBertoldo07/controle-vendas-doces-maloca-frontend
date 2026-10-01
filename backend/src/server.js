@@ -9,6 +9,7 @@ import custosRoutes from "./routes/custos.js";
 import producaoRoutes from "./routes/producao.js";
 import materiasPrimasRoutes from "./routes/materiasPrimas.js";
 import estoqueRoutes from "./routes/estoque.js";
+import agentesRoutes from "./routes/agentes.js";
 import { verificarAuth } from "./middlewares/auth.js";
 import { replacerJsonTemporal } from "./lib/periodos.js";
 
@@ -42,6 +43,7 @@ app.use("/api/custos", verificarAuth, custosRoutes);
 app.use("/api/producao", verificarAuth, producaoRoutes);
 app.use("/api/materias-primas", verificarAuth, materiasPrimasRoutes);
 app.use("/api/estoque", verificarAuth, estoqueRoutes);
+app.use("/api/agentes", verificarAuth, agentesRoutes); // camada SMA (Etapa 1)
 
 // Rota de teste
 app.get("/", (req, res) => {

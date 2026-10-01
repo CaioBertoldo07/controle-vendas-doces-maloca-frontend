@@ -10,9 +10,10 @@
     "build": "prisma generate",
     "postinstall": "prisma generate",
     "ambiente:verificar": "node scripts/ambiente/verificarAmbiente.js desenvolvimento",
-    "db:dev:push": "node scripts/ambiente/prisma.js desenvolvimento db push",
+    "db:dev:migrate": "node scripts/ambiente/prisma.js desenvolvimento migrate deploy",
+    "db:dev:status": "node scripts/ambiente/prisma.js desenvolvimento migrate status",
     "db:dev:seed": "node prisma/seed.js",
-    "db:test:reset": "node scripts/ambiente/prisma.js teste db push --force-reset --skip-generate",
+    "db:test:reset": "node scripts/ambiente/prisma.js teste migrate reset --force --skip-seed --skip-generate",
     "test": "node scripts/testes/executarSuite.js",
     "test:watch": "vitest",
     "test:guardas": "node --test \"scripts/**/*.test.js\"",
@@ -30,7 +31,8 @@
     "dotenv": "^16.4.5",
     "express": "^4.21.1",
     "jsonwebtoken": "^9.0.2",
-    "prisma": "^5.22.0"
+    "prisma": "^5.22.0",
+    "zod": "4.6.5"
   },
   "devDependencies": {
     "nodemon": "^3.1.7",

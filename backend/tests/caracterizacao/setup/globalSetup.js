@@ -55,10 +55,12 @@ export default async function setup(project) {
   const { url, descricao } = prepararAmbienteDeTeste();
   console.log(`\n🧪 Banco de teste: ${descricao} | TZ do processo: ${TZ_TESTE}`);
 
-  // Schema limpo a cada execução (o wrapper reaplica as guardas da 0.1).
+  // Schema limpo a cada execução pelas MIGRATIONS versionadas (Etapa 1): toda
+  // execução da suíte também testa prisma/migrations. O wrapper reaplica as
+  // guardas da 0.1.
   const reset = spawnSync(
     process.execPath,
-    ["scripts/ambiente/prisma.js", "teste", "db", "push", "--force-reset", "--skip-generate"],
+    ["scripts/ambiente/prisma.js", "teste", "migrate", "reset", "--force", "--skip-seed", "--skip-generate"],
     { cwd: DIR_BACKEND, encoding: "utf8" },
   );
   if (reset.status !== 0) {

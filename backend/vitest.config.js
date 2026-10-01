@@ -5,9 +5,9 @@ import { TZ_TESTE } from "./tests/caracterizacao/setup/ambiente.js";
 
 export default defineConfig({
   test: {
-    // Só a suíte nova. tests/api.test.js é o smoke test manual antigo e não
-    // faz parte dela.
-    include: ["tests/caracterizacao/**/*.test.js"],
+    // Caracterização (Etapa 0) e camada SMA (Etapa 1). tests/api.test.js é o
+    // smoke test manual antigo e não faz parte da suíte.
+    include: ["tests/caracterizacao/**/*.test.js", "tests/sma/**/*.test.js"],
     // Recria o banco doces_maloca_test e sobe o src/server.js real apontando
     // para ele.
     globalSetup: ["tests/caracterizacao/setup/globalSetup.js"],

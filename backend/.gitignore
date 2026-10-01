@@ -2,8 +2,7 @@ node_modules/
 .env
 *.log
 .DS_Store
-prisma/migrations/*
-!prisma/migrations/.gitkeep
+# prisma/migrations é versionado desde a Etapa 1 (baseline 0_baseline + migrations da camada SMA)
 dist/
 build/
 # Saída da coleta read-only da Etapa 0.2 (pode conter dados do negócio)
