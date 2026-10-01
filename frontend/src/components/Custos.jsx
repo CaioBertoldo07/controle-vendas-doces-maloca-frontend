@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { custosAPI, materiasPrimasAPI } from '../services/api';
 import { useConfirm } from '../hooks/useConfirm';
+import { hojeFormatado, mesEAnoAtuais } from '../utils/tempo';
 
 const CATEGORIAS = ['Matéria Prima', 'Embalagem', 'Equipamento', 'Outros'];
 const UNIDADES   = ['kg', 'g', 'L', 'ml', 'un', 'cx', 'pct', 'saco'];
@@ -10,11 +11,6 @@ function brParaIso(dataBr) {
   const [dia, mes, ano] = dataBr.split('/');
   if (!dia || !mes || !ano) return '';
   return `${ano}-${mes.padStart(2,'0')}-${dia.padStart(2,'0')}`;
-}
-
-function hojeFormatado() {
-  const hoje = new Date();
-  return `${String(hoje.getDate()).padStart(2,'0')}/${String(hoje.getMonth()+1).padStart(2,'0')}/${hoje.getFullYear()}`;
 }
 
 function formatarData(data) {
@@ -28,8 +24,7 @@ function formatarMoeda(v) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 }
 
-const mesAtual = new Date().getMonth() + 1;
-const anoAtual = new Date().getFullYear();
+const { mes: mesAtual, ano: anoAtual } = mesEAnoAtuais();
 
 export default function Custos() {
   const [confirmar, dialogoConfirmacao] = useConfirm();

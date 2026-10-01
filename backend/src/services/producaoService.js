@@ -8,7 +8,15 @@
  *   - KNOWN_BEHAVIOR: sabor inexistente lança Error comum (a API responde 500).
  */
 import { ErroDominio, erro } from "../lib/erros.js";
-import { intervaloDoMes } from "../lib/periodos.js";
+import {
+  agoraCivil,
+  intervaloDaSemana,
+  intervaloDoDia,
+  intervaloDoMes,
+  lerDataCivil,
+  mesAtualCivil,
+  nomeDoMes,
+} from "../lib/periodos.js";
 import { prisma } from "../lib/prisma.js";
 import { obterSaldoMateriaPrima } from "./materiaPrimaService.js";
 
@@ -96,8 +104,8 @@ export async function listarProducao({ mes, ano } = {}) {
   let where = {};
 
   if (mes && ano) {
-    const { inicio, fim } = intervaloDoMes(ano, mes);
-    where.data = { gte: inicio, lte: fim };
+    const { inicio, fimExclusivo } = intervaloDoMes(ano, mes);
+    where.data = { gte: inicio, lt: fimExclusivo };
   }
 
   return prisma.producao.findMany({
@@ -124,10 +132,13 @@ export async function criarProducao({ data, observacao, sabores } = {}) {
   const faltantes = await verificarFaltantes(necessidades);
   if (faltantes.length > 0) throw estoqueInsuficiente(faltantes);
 
+  // Data civil de Manaus; a produção e as saídas de insumo recebem a mesma.
+  const quando = data ? lerDataCivil(data) : agoraCivil();
+
   return prisma.$transaction(async (tx) => {
     const prod = await tx.producao.create({
       data: {
-        data: data ? new Date(data) : new Date(),
+        data: quando,
         observacao: observacao?.trim() || null,
         sabores: {
           create: sabores.map((s) => ({
@@ -141,7 +152,7 @@ export async function criarProducao({ data, observacao, sabores } = {}) {
       },
     });
 
-    await registrarSaidas(tx, necessidades, prod.id, data ? new Date(data) : new Date());
+    await registrarSaidas(tx, necessidades, prod.id, quando);
 
     return prod;
   });
@@ -176,7 +187,7 @@ export async function atualizarProducao(id, { data, observacao, sabores } = {}) 
     const prod = await tx.producao.update({
       where: { id: parseInt(id) },
       data: {
-        ...(data && { data: new Date(data) }),
+        ...(data && { data: lerDataCivil(data) }),
         ...(observacao !== undefined && {
           observacao: observacao?.trim() || null,
         }),
@@ -194,7 +205,7 @@ export async function atualizarProducao(id, { data, observacao, sabores } = {}) 
       },
     });
 
-    await registrarSaidas(tx, necessidades, prod.id, data ? new Date(data) : existe.data);
+    await registrarSaidas(tx, necessidades, prod.id, data ? lerDataCivil(data) : existe.data);
 
     return prod;
   });
@@ -238,17 +249,18 @@ function saldoPorNome(produzidoPorNome, vendidoPorNome) {
 
 /**
  * Resumo usado pela aba Produção: hoje, semana, mês, 12 meses, produzido ×
- * vendido no mês e acumulado até o fim do mês. Hoje e semana usam o relógio
- * atual do processo.
+ * vendido no mês e acumulado até o fim do mês. Mês, hoje e semana (domingo a
+ * sábado) são do calendário de Manaus, independentemente do fuso do processo.
  */
 export async function obterResumoProducao({ mes, ano } = {}) {
-  const anoAtual = ano ? parseInt(ano) : new Date().getFullYear();
-  const mesAtual = mes ? parseInt(mes) : new Date().getMonth() + 1;
+  const agora = mesAtualCivil(); // mês corrente em Manaus
+  const anoAtual = ano ? parseInt(ano) : agora.ano;
+  const mesAtual = mes ? parseInt(mes) : agora.mes;
 
-  const { inicio: startDate, fim: endDate } = intervaloDoMes(anoAtual, mesAtual);
+  const { inicio: startDate, fimExclusivo: fimMes } = intervaloDoMes(anoAtual, mesAtual);
 
   const producaoMes = await prisma.producao.findMany({
-    where: { data: { gte: startDate, lte: endDate } },
+    where: { data: { gte: startDate, lt: fimMes } },
     orderBy: { data: "asc" },
     include: { sabores: { include: { sabor: true } } },
   });
@@ -261,30 +273,21 @@ export async function obterResumoProducao({ mes, ano } = {}) {
   // Por sabor no mês
   const porSabor = somarPorNomeDoSabor(producaoMes.flatMap((p) => p.sabores));
 
-  // Esta semana
-  const hoje = new Date();
-  const diaSemana = hoje.getDay();
-  const inicioSemana = new Date(hoje);
-  inicioSemana.setDate(hoje.getDate() - diaSemana);
-  inicioSemana.setHours(0, 0, 0, 0);
-  const fimSemana = new Date(inicioSemana);
-  fimSemana.setDate(inicioSemana.getDate() + 6);
-  fimSemana.setHours(23, 59, 59);
+  // Esta semana (domingo a sábado, em Manaus)
+  const hoje = agoraCivil();
+  const semana = intervaloDaSemana(hoje);
 
   const producaoSemana = await prisma.producaoSabor.aggregate({
-    where: { producao: { data: { gte: inicioSemana, lte: fimSemana } } },
+    where: { producao: { data: { gte: semana.inicio, lt: semana.fimExclusivo } } },
     _sum: { quantidade: true },
   });
   const totalSemana = producaoSemana._sum.quantidade || 0;
 
-  // Hoje
-  const inicioDia = new Date(hoje);
-  inicioDia.setHours(0, 0, 0, 0);
-  const fimDia = new Date(hoje);
-  fimDia.setHours(23, 59, 59);
+  // Hoje (em Manaus)
+  const dia = intervaloDoDia(hoje);
 
   const producaoHoje = await prisma.producaoSabor.aggregate({
-    where: { producao: { data: { gte: inicioDia, lte: fimDia } } },
+    where: { producao: { data: { gte: dia.inicio, lt: dia.fimExclusivo } } },
     _sum: { quantidade: true },
   });
   const totalHoje = producaoHoje._sum.quantidade || 0;
@@ -292,21 +295,21 @@ export async function obterResumoProducao({ mes, ano } = {}) {
   // Resumo anual
   const meses = [];
   for (let m = 1; m <= 12; m++) {
-    const { inicio: s, fim: e } = intervaloDoMes(anoAtual, m);
+    const { inicio: s, fimExclusivo: e } = intervaloDoMes(anoAtual, m);
     const agg = await prisma.producaoSabor.aggregate({
-      where: { producao: { data: { gte: s, lte: e } } },
+      where: { producao: { data: { gte: s, lt: e } } },
       _sum: { quantidade: true },
     });
     meses.push({
       mes: m,
-      nomeMes: s.toLocaleString("pt-BR", { month: "long" }),
+      nomeMes: nomeDoMes(s),
       total: agg._sum.quantidade || 0,
     });
   }
 
   // Vendas do mês para comparação
   const vendasSabores = await prisma.vendaSabor.findMany({
-    where: { venda: { data: { gte: startDate, lte: endDate } } },
+    where: { venda: { data: { gte: startDate, lt: fimMes } } },
     include: { sabor: true },
   });
   const vendidoPorSabor = somarPorNomeDoSabor(vendasSabores);
@@ -315,11 +318,11 @@ export async function obterResumoProducao({ mes, ano } = {}) {
 
   // Produção e vendas acumuladas até o fim do mês
   const producaoCumulativa = await prisma.producaoSabor.findMany({
-    where: { producao: { data: { lte: endDate } } },
+    where: { producao: { data: { lt: fimMes } } },
     include: { sabor: true },
   });
   const vendasCumulativas = await prisma.vendaSabor.findMany({
-    where: { venda: { data: { lte: endDate } } },
+    where: { venda: { data: { lt: fimMes } } },
     include: { sabor: true },
   });
   const saldoPorSaborCumulativo = saldoPorNome(

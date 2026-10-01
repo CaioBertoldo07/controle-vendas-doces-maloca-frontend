@@ -8,7 +8,7 @@
  *   - KNOWN_BEHAVIOR: na edição, valores "falsy" (ex.: 0) são ignorados.
  */
 import { erro } from "../lib/erros.js";
-import { intervaloDoMes } from "../lib/periodos.js";
+import { agoraCivil, intervaloDoMes, lerDataCivil, mesAtualCivil, nomeDoMes } from "../lib/periodos.js";
 import { prisma } from "../lib/prisma.js";
 
 /** Converte a quantidade comprada para a unidade base do insumo. Pura. */
@@ -23,8 +23,8 @@ export async function listarCustos({ mes, ano, categoria } = {}) {
   let where = {};
 
   if (mes && ano) {
-    const { inicio, fim } = intervaloDoMes(ano, mes);
-    where.data = { gte: inicio, lte: fim };
+    const { inicio, fimExclusivo } = intervaloDoMes(ano, mes);
+    where.data = { gte: inicio, lt: fimExclusivo };
   }
   if (categoria) where.categoria = categoria;
 
@@ -58,6 +58,9 @@ export async function criarCusto({
     if (!mp) throw erro(400, "Matéria-prima não encontrada");
   }
 
+  // Data civil de Manaus; o custo e a entrada de insumo recebem a mesma.
+  const quando = data ? lerDataCivil(data) : agoraCivil();
+
   return prisma.$transaction(async (tx) => {
     const c = await tx.custo.create({
       data: {
@@ -66,7 +69,7 @@ export async function criarCusto({
         quantidade: parseFloat(quantidade),
         unidade: unidade.trim(),
         valorTotal: parseFloat(valorTotal),
-        data: data ? new Date(data) : new Date(),
+        data: quando,
         observacao: observacao?.trim() || null,
         materiaPrimaId: mpId,
       },
@@ -81,7 +84,7 @@ export async function criarCusto({
           origem: "CUSTO",
           quantidade: converterParaBase(quantidade, unidade, mp.unidadeBase),
           custoId: c.id,
-          data: data ? new Date(data) : new Date(),
+          data: quando,
           observacao: `Compra: ${nome.trim()}`,
         },
       });
@@ -120,7 +123,7 @@ export async function atualizarCusto(id, {
 
   const novaQtd = quantidade !== undefined ? parseFloat(quantidade) : parseFloat(existe.quantidade);
   const novaUnidade = unidade !== undefined ? unidade.trim() : existe.unidade;
-  const novaData = data !== undefined ? new Date(data) : existe.data;
+  const novaData = data !== undefined ? lerDataCivil(data) : existe.data;
 
   return prisma.$transaction(async (tx) => {
     // A entrada anterior deste custo é removida e, se houver insumo, recriada
@@ -134,7 +137,7 @@ export async function atualizarCusto(id, {
         ...(quantidade && { quantidade: parseFloat(quantidade) }),
         ...(unidade && { unidade: unidade.trim() }),
         ...(valorTotal && { valorTotal: parseFloat(valorTotal) }),
-        ...(data && { data: new Date(data) }),
+        ...(data && { data: lerDataCivil(data) }),
         ...(observacao !== undefined && { observacao: observacao?.trim() || null }),
         materiaPrimaId: mpId,
       },
@@ -172,13 +175,14 @@ export async function excluirCusto(id) {
 
 /** Total do mês, por categoria e série dos 12 meses do ano. */
 export async function resumoCustos({ mes, ano } = {}) {
-  const anoAtual = ano ? parseInt(ano) : new Date().getFullYear();
-  const mesAtual = mes ? parseInt(mes) : new Date().getMonth() + 1;
+  const agora = mesAtualCivil(); // mês corrente em Manaus
+  const anoAtual = ano ? parseInt(ano) : agora.ano;
+  const mesAtual = mes ? parseInt(mes) : agora.mes;
 
-  const { inicio: startDate, fim: endDate } = intervaloDoMes(anoAtual, mesAtual);
+  const { inicio: startDate, fimExclusivo } = intervaloDoMes(anoAtual, mesAtual);
 
   const custos = await prisma.custo.findMany({
-    where: { data: { gte: startDate, lte: endDate } },
+    where: { data: { gte: startDate, lt: fimExclusivo } },
   });
 
   const totalGeral = custos.reduce(
@@ -192,14 +196,14 @@ export async function resumoCustos({ mes, ano } = {}) {
 
   const meses = [];
   for (let m = 1; m <= 12; m++) {
-    const { inicio: s, fim: e } = intervaloDoMes(anoAtual, m);
+    const { inicio: s, fimExclusivo: e } = intervaloDoMes(anoAtual, m);
     const cm = await prisma.custo.findMany({
-      where: { data: { gte: s, lte: e } },
+      where: { data: { gte: s, lt: e } },
     });
     const total = cm.reduce((sum, c) => sum + parseFloat(c.valorTotal), 0);
     meses.push({
       mes: m,
-      nomeMes: s.toLocaleString("pt-BR", { month: "long" }),
+      nomeMes: nomeDoMes(s),
       total: total.toFixed(2),
       quantidade: cm.length,
     });

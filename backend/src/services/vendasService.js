@@ -11,7 +11,15 @@
  * (inclusive valores monetários como string com 2 casas nos totais).
  */
 import { ErroDominio, erro } from "../lib/erros.js";
-import { intervaloDoMes } from "../lib/periodos.js";
+import {
+  agoraCivil,
+  formatarDiaCivil,
+  intervaloDoMes,
+  intervaloEntreDatas,
+  lerDataCivil,
+  mesAtualCivil,
+  nomeDoMes,
+} from "../lib/periodos.js";
 import { prisma } from "../lib/prisma.js";
 import { resolverCliente, resolverSabores } from "./resolverNomes.js";
 
@@ -79,9 +87,9 @@ export async function criarVendaPorTexto({
       quantidade: quantidadeTotal,
       valor: parseFloat(valor),
       desconto: parseFloat(desconto),
-      data: data ? new Date(data) : new Date(),
+      data: data ? lerDataCivil(data) : agoraCivil(),
       pago: foiPago,
-      dataPagamento: foiPago ? new Date() : null,
+      dataPagamento: foiPago ? agoraCivil() : null,
       idempotencyKey: idempotencyKey || null,
       sabores: {
         create: saboresResolvidos,
@@ -122,9 +130,9 @@ export async function criarVenda({
       quantidade: parseInt(quantidade),
       valor: parseFloat(valor),
       desconto: parseFloat(desconto || 0),
-      data: data ? new Date(data) : new Date(),
+      data: data ? lerDataCivil(data) : agoraCivil(),
       pago: foiPago,
-      dataPagamento: foiPago ? new Date() : null,
+      dataPagamento: foiPago ? agoraCivil() : null,
       sabores: {
         create: sabores.map((s) => ({
           saborId: parseInt(s.saborId),
@@ -148,15 +156,13 @@ export async function listarVendas({ mes, ano, clienteId, dataInicio, dataFim, l
   }
 
   if (mes && ano) {
-    const { inicio, fim } = intervaloDoMes(ano, mes);
-    where.data = { gte: inicio, lte: fim };
+    const { inicio, fimExclusivo } = intervaloDoMes(ano, mes);
+    where.data = { gte: inicio, lt: fimExclusivo };
   }
 
   if (dataInicio && dataFim) {
-    where.data = {
-      gte: new Date(dataInicio),
-      lte: new Date(dataFim + "T23:59:59"),
-    };
+    const { inicio, fimExclusivo } = intervaloEntreDatas(dataInicio, dataFim);
+    where.data = { gte: inicio, lt: fimExclusivo };
   }
 
   if (clienteId) {
@@ -201,11 +207,11 @@ export async function atualizarVenda(id, { clienteId, quantidade, valor, descont
       ...(valor && { valor: parseFloat(valor) }),
       // desconto usa checagem explícita: 0 é um valor válido (remover o desconto)
       ...(desconto !== undefined && { desconto: parseFloat(desconto) || 0 }),
-      ...(data && { data: new Date(data) }),
+      ...(data && { data: lerDataCivil(data) }),
       // pago usa checagem explícita: false é um valor válido (voltar a pendente)
       ...(pago !== undefined && {
         pago: ehPago(pago),
-        dataPagamento: ehPago(pago) ? vendaExiste.dataPagamento || new Date() : null,
+        dataPagamento: ehPago(pago) ? vendaExiste.dataPagamento || agoraCivil() : null,
       }),
       ...(sabores && {
         sabores: {
@@ -221,8 +227,8 @@ export async function atualizarVenda(id, { clienteId, quantidade, valor, descont
 }
 
 /**
- * Marca como paga (dataPagamento informada, ou a já existente, ou agora) ou
- * volta para pendente (limpa a data).
+ * Marca como paga (dataPagamento informada, ou a já existente, ou agora em
+ * Manaus) ou volta para pendente (limpa a data).
  */
 export async function atualizarPagamento(id, { pago, dataPagamento } = {}) {
   if (pago === undefined) throw erro(400, "Campo 'pago' é obrigatório");
@@ -240,8 +246,8 @@ export async function atualizarPagamento(id, { pago, dataPagamento } = {}) {
       pago: foiPago,
       dataPagamento: foiPago
         ? dataPagamento
-          ? new Date(dataPagamento)
-          : vendaExiste.dataPagamento || new Date()
+          ? lerDataCivil(dataPagamento)
+          : vendaExiste.dataPagamento || agoraCivil()
         : null,
     },
     include: INCLUIR_CLIENTE_E_SABORES,
@@ -263,14 +269,14 @@ export async function excluirVenda(id) {
 /**
  * Totais do período: quantidades, valores (pago = faturamento; pendente = a
  * receber), por cliente (agrupado por NOME, KNOWN_BEHAVIOR), por dia
- * (dd/mm/aaaa no fuso do processo) e média de unidades por venda.
+ * (dd/mm/aaaa, dia civil de Manaus) e média de unidades por venda.
  */
 export async function obterTotais({ mes, ano, clienteId } = {}) {
   let where = {};
 
   if (mes && ano) {
-    const { inicio, fim } = intervaloDoMes(ano, mes);
-    where.data = { gte: inicio, lte: fim };
+    const { inicio, fimExclusivo } = intervaloDoMes(ano, mes);
+    where.data = { gte: inicio, lt: fimExclusivo };
   }
 
   if (clienteId) {
@@ -297,7 +303,7 @@ export async function obterTotais({ mes, ano, clienteId } = {}) {
   }, {});
 
   const porDia = vendas.reduce((acc, v) => {
-    const dia = new Date(v.data).toLocaleDateString("pt-BR");
+    const dia = formatarDiaCivil(v.data);
     acc[dia] = (acc[dia] || 0) + v.quantidade;
     return acc;
   }, {});
@@ -318,16 +324,16 @@ export async function obterTotais({ mes, ano, clienteId } = {}) {
 
 /** Série dos 12 meses do ano: vendas, unidades, valor total, pago e pendente. */
 export async function relatorioMensal({ ano } = {}) {
-  const anoAtual = ano ? parseInt(ano) : new Date().getFullYear();
+  const anoAtual = ano ? parseInt(ano) : mesAtualCivil().ano;
 
   const meses = [];
 
   for (let mes = 1; mes <= 12; mes++) {
-    const { inicio: startDate, fim: endDate } = intervaloDoMes(anoAtual, mes);
+    const { inicio: startDate, fimExclusivo } = intervaloDoMes(anoAtual, mes);
 
     const vendas = await prisma.venda.findMany({
       where: {
-        data: { gte: startDate, lte: endDate },
+        data: { gte: startDate, lt: fimExclusivo },
       },
     });
 
@@ -339,7 +345,7 @@ export async function relatorioMensal({ ano } = {}) {
 
     meses.push({
       mes,
-      nomeMes: startDate.toLocaleString("pt-BR", { month: "long" }),
+      nomeMes: nomeDoMes(startDate),
       totalVendas: vendas.length,
       totalQuantidade: total,
       valorTotal: valorTotal.toFixed(2),

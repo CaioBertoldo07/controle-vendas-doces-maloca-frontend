@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { vendasAPI } from '../services/api';
+import { mesEAnoAtuais } from '../utils/tempo';
 
 const MESES = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
@@ -10,9 +11,9 @@ function Dashboard() {
   const [totais, setTotais] = useState(null);
   const [relatorioAnual, setRelatorioAnual] = useState(null);
   const [loading, setLoading] = useState(true);
-  const hoje = new Date();
-  const [mesSelecionado, setMesSelecionado] = useState(hoje.getMonth() + 1);
-  const [anoSelecionado, setAnoSelecionado] = useState(hoje.getFullYear());
+  const hoje = mesEAnoAtuais(); // Manaus
+  const [mesSelecionado, setMesSelecionado] = useState(hoje.mes);
+  const [anoSelecionado, setAnoSelecionado] = useState(hoje.ano);
 
   useEffect(() => {
     carregarDados();
@@ -36,7 +37,7 @@ function Dashboard() {
   };
 
   const anosDisponiveis = Array.from(
-    { length: hoje.getFullYear() - 2023 + 1 },
+    { length: hoje.ano - 2023 + 1 },
     (_, i) => 2024 + i
   );
 

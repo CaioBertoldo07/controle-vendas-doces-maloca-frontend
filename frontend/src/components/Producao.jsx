@@ -1,16 +1,12 @@
 import { useState, useEffect } from 'react';
 import { producaoAPI, saboresAPI } from '../services/api';
 import { useConfirm } from '../hooks/useConfirm';
+import { hojeFormatado, mesEAnoAtuais } from '../utils/tempo';
 
 function brParaIso(dataBr) {
   const [dia, mes, ano] = dataBr.split('/');
   if (!dia || !mes || !ano) return '';
   return `${ano}-${mes.padStart(2,'0')}-${dia.padStart(2,'0')}`;
-}
-
-function hojeFormatado() {
-  const hoje = new Date();
-  return `${String(hoje.getDate()).padStart(2,'0')}/${String(hoje.getMonth()+1).padStart(2,'0')}/${hoje.getFullYear()}`;
 }
 
 function formatarData(data) {
@@ -20,8 +16,7 @@ function formatarData(data) {
   return `${dia}/${mes}/${ano}`;
 }
 
-const mesAtual = new Date().getMonth() + 1;
-const anoAtual = new Date().getFullYear();
+const { mes: mesAtual, ano: anoAtual } = mesEAnoAtuais();
 
 const SABOR_CORES = ['#f59e0b','#10b981','#3b82f6','#ec4899','#8b5cf6','#ef4444'];
 

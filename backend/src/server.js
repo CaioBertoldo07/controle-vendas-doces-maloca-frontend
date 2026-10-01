@@ -10,11 +10,16 @@ import producaoRoutes from "./routes/producao.js";
 import materiasPrimasRoutes from "./routes/materiasPrimas.js";
 import estoqueRoutes from "./routes/estoque.js";
 import { verificarAuth } from "./middlewares/auth.js";
+import { replacerJsonTemporal } from "./lib/periodos.js";
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Datas de negócio saem com o horário de Manaus e o deslocamento real
+// ("2026-03-31T23:30:00.000-04:00"), não com um "Z" falso (Etapa 0.5).
+app.set("json replacer", replacerJsonTemporal);
 
 // Middlewares
 app.use(

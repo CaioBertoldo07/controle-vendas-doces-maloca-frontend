@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { vendasAPI, clientesAPI, custosAPI } from '../services/api';
 import { useConfirm } from '../hooks/useConfirm';
+import { mesEAnoAtuais } from '../utils/tempo';
 
 function Relatorios() {
   const [confirmar, dialogoConfirmacao] = useConfirm();
@@ -11,8 +12,7 @@ function Relatorios() {
   const [resumoCustos, setResumoCustos] = useState(null);
   const [loading, setLoading] = useState(true);
   const [filtros, setFiltros] = useState({
-    mes: new Date().getMonth() + 1,
-    ano: new Date().getFullYear(),
+    ...mesEAnoAtuais(),
     clienteId: '',
     tipo: '',
     situacao: ''
@@ -199,15 +199,16 @@ function Relatorios() {
     const [dia, mes, ano] = formEdit.data.split('/');
     if (!dia || !mes || !ano) { showMsg('❌ Data inválida', 'error'); return; }
 
-    // Horário: mantém o registrado se não for alterado; vazio = sem horário (00:00)
-    let hora = '00:00:00.000Z';
+    // Horário de Manaus, sem "Z": mantém o registrado se não for alterado;
+    // vazio = sem horário (00:00)
+    let hora = '00:00:00';
     if (formEdit.hora) {
       const [hh, mm] = formEdit.hora.split(':');
       if (hh === undefined || mm === undefined || +hh > 23 || +mm > 59) {
         showMsg('❌ Horário inválido. Use HH:MM', 'error');
         return;
       }
-      hora = `${hh.padStart(2, '0')}:${mm.padStart(2, '0')}:00.000Z`;
+      hora = `${hh.padStart(2, '0')}:${mm.padStart(2, '0')}:00`;
     }
     const dataIso = `${ano}-${mes.padStart(2, '0')}-${dia.padStart(2, '0')}T${hora}`;
 

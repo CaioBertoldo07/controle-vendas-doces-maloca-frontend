@@ -21,7 +21,7 @@ beforeEach(async () => {
 });
 
 const produzir = (sabores, extra = {}) =>
-  api(token).post("/api/producao").send({ data: "2026-03-10T12:00:00.000Z", sabores, ...extra });
+  api(token).post("/api/producao").send({ data: "2026-03-10T12:00:00", sabores, ...extra }); // civil de Manaus
 
 /** Saídas de produção agrupadas por matéria-prima: { [mpId]: quantidade } */
 async function saidasPorInsumo(where = {}) {
@@ -120,7 +120,7 @@ describe("POST /api/producao — criação", () => {
 
     expect(res.status).toBe(201);
     expect(res.body.observacao).toBe("lote teste"); // trim
-    expect(res.body.data).toBe("2026-03-10T12:00:00.000Z");
+    expect(res.body.data).toBe("2026-03-10T12:00:00.000-04:00");
     expect(res.body.sabores).toHaveLength(1);
     expect(res.body.sabores[0]).toMatchObject({ saborId: sabor.id, quantidade: 50, sabor: { id: sabor.id } });
 
@@ -250,7 +250,7 @@ describe("PUT /api/producao/:id — edição", () => {
   it("nova data é aplicada à produção e às saídas", async () => {
     const { sabor, id } = await producaoInicial();
     await api(token).put(`/api/producao/${id}`).send({
-      data: "2026-04-02T08:00:00.000Z",
+      data: "2026-04-02T08:00:00",
       sabores: [{ saborId: sabor.id, quantidade: 50 }],
     });
     const movs = await movimentacoesDe({ producaoId: id });
@@ -317,12 +317,12 @@ describe("DELETE /api/producao/:id — exclusão", () => {
 describe("GET /api/producao — listagem", () => {
   it("filtra por mês/ano e ordena da mais recente para a mais antiga", async () => {
     const sabor = await criarSabor();
-    for (const data of ["2026-03-01T10:00:00.000Z", "2026-03-31T23:30:00.000Z", "2026-04-01T00:30:00.000Z"]) {
+    for (const data of ["2026-03-01T10:00:00", "2026-03-31T23:30:00", "2026-04-01T00:30:00"]) {
       await produzir([{ saborId: sabor.id, quantidade: 1 }], { data });
     }
     const res = await api(token).get("/api/producao?mes=3&ano=2026");
     expect(res.status).toBe(200);
-    expect(res.body.map((p) => p.data)).toEqual(["2026-03-31T23:30:00.000Z", "2026-03-01T10:00:00.000Z"]);
+    expect(res.body.map((p) => p.data)).toEqual(["2026-03-31T23:30:00.000-04:00", "2026-03-01T10:00:00.000-04:00"]);
     expect(res.body[0].sabores[0].sabor.id).toBe(sabor.id);
   });
 });

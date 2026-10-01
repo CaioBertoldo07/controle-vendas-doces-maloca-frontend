@@ -1,21 +1,6 @@
 import { useState, useEffect } from 'react';
 import { saboresAPI, vendasAPI, clientesAPI } from '../services/api';
-
-function hojeFormatado() {
-  const hoje = new Date();
-  const dia = String(hoje.getDate()).padStart(2, '0');
-  const mes = String(hoje.getMonth() + 1).padStart(2, '0');
-  return `${dia}/${mes}/${hoje.getFullYear()}`;
-}
-
-// Anexa o horário atual à data escolhida, para registrar a hora da venda
-function comHoraAtual(dataIso) {
-  const agora = new Date();
-  const hh = String(agora.getHours()).padStart(2, '0');
-  const mm = String(agora.getMinutes()).padStart(2, '0');
-  const ss = String(agora.getSeconds()).padStart(2, '0');
-  return `${dataIso}T${hh}:${mm}:${ss}.000Z`;
-}
+import { comHoraAtual, hojeFormatado } from '../utils/tempo';
 
 function VendaDireta() {
   const [saboresDisponiveis, setSaboresDisponiveis] = useState([]);

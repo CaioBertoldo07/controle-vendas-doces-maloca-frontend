@@ -3,7 +3,8 @@
  *   1. valida o ambiente (ambiente.js);
  *   2. recria o schema do banco de teste via wrapper protegido da Etapa 0.1;
  *   3. sobe o src/server.js REAL como processo filho, numa porta livre,
- *      apontando para o banco de teste, com TZ=UTC e segredos fictícios.
+ *      apontando para o banco de teste, com o TZ da suíte (UTC por padrão) e
+ *      segredos fictícios.
  * O servidor não é modificado nem importado: os testes o exercitam por HTTP.
  */
 import { spawn, spawnSync } from "node:child_process";
@@ -52,7 +53,7 @@ async function esperarServidor(url, processo, tentativas = 100) {
 
 export default async function setup(project) {
   const { url, descricao } = prepararAmbienteDeTeste();
-  console.log(`\n🧪 Banco de teste: ${descricao}`);
+  console.log(`\n🧪 Banco de teste: ${descricao} | TZ do processo: ${TZ_TESTE}`);
 
   // Schema limpo a cada execução (o wrapper reaplica as guardas da 0.1).
   const reset = spawnSync(

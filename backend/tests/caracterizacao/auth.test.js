@@ -1,14 +1,17 @@
 // Caracterização: autenticação (authController, middlewares/auth.js)
 import jwt from "jsonwebtoken";
 import { describe, expect, it } from "vitest";
-import { JWT_SECRET_TESTE } from "./setup/ambiente.js";
+import { JWT_SECRET_TESTE, TZ_TESTE } from "./setup/ambiente.js";
 import { prisma } from "./helpers/db.js";
 import { api, cru } from "./helpers/http.js";
 import { criarUsuario, tokenPara } from "./helpers/fixtures.js";
 
 describe("ambiente da suíte", () => {
-  it("roda com TZ=UTC (mesmo fuso do container de produção)", () => {
-    expect(new Date(2026, 0, 1).toISOString()).toBe("2026-01-01T00:00:00.000Z");
+  // Etapa 0.5: a suíte roda em UTC (padrão, igual ao container) ou em
+  // America/Manaus (MALOCA_TZ_TESTE); as regras não podem depender disso.
+  it("roda no TZ de processo configurado para a suíte", () => {
+    expect(Intl.DateTimeFormat().resolvedOptions().timeZone).toBe(TZ_TESTE);
+    expect(process.env.TZ).toBe(TZ_TESTE);
   });
 });
 

@@ -1,27 +1,12 @@
 import { useState, useEffect } from 'react';
 import { clientesAPI, vendasAPI, saboresAPI } from '../services/api';
+import { comHoraAtual, hojeFormatado } from '../utils/tempo';
 import './RegistrarVenda.css';
 
 function brParaIso(dataBr) {
   const [dia, mes, ano] = dataBr.split('/');
   if (!dia || !mes || !ano) return '';
   return `${ano}-${mes.padStart(2,'0')}-${dia.padStart(2,'0')}`;
-}
-
-function hojeFormatado() {
-  const hoje = new Date();
-  const dia = String(hoje.getDate()).padStart(2,'0');
-  const mes = String(hoje.getMonth()+1).padStart(2,'0');
-  return `${dia}/${mes}/${hoje.getFullYear()}`;
-}
-
-// Anexa o horário atual à data escolhida, para registrar a hora da venda
-function comHoraAtual(dataIso) {
-  const agora = new Date();
-  const hh = String(agora.getHours()).padStart(2,'0');
-  const mm = String(agora.getMinutes()).padStart(2,'0');
-  const ss = String(agora.getSeconds()).padStart(2,'0');
-  return `${dataIso}T${hh}:${mm}:${ss}.000Z`;
 }
 
 function RegistrarVenda() {

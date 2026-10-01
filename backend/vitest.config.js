@@ -1,6 +1,7 @@
 // Suíte de caracterização (Etapa 0.3 do TCC).
 // Guia: docs/tcc/etapa-0-3-testes-caracterizacao.md
 import { defineConfig } from "vitest/config";
+import { TZ_TESTE } from "./tests/caracterizacao/setup/ambiente.js";
 
 export default defineConfig({
   test: {
@@ -23,8 +24,9 @@ export default defineConfig({
     pool: "forks",
     isolate: false,
     maxWorkers: 1,
-    // Mesmo fuso do container de produção (ver relatório, seção de fuso).
-    env: { TZ: "UTC" },
+    // Fuso do processo: UTC por padrão (container de produção); ver
+    // MALOCA_TZ_TESTE em setup/ambiente.js.
+    env: { TZ: TZ_TESTE },
     testTimeout: 20000,
     hookTimeout: 120000,
   },

@@ -1,6 +1,7 @@
 // Caracterização: totais e relatórios (vendasController.obterTotais,
 // relatorioMensal; producaoController.resumoProducao).
-// Dataset pequeno e previsível; servidor em TZ=UTC (igual à produção).
+// Dataset pequeno e previsível. As datas são gravadas direto no banco com o
+// relógio civil de Manaus nos componentes (política temporal da 0.5).
 import { beforeEach, describe, expect, it } from "vitest";
 import { api } from "./helpers/http.js";
 import { autenticar, criarCliente, criarProducao, criarSabor, criarVenda } from "./helpers/fixtures.js";
@@ -8,7 +9,7 @@ import { autenticar, criarCliente, criarProducao, criarSabor, criarVenda } from 
 let token, alfa, beta, coco, limao;
 
 /*
- * Dataset (datas em UTC):
+ * Dataset (data-hora civil de Manaus):
  *   V1 Alfa 02/03 10:00  coco 10         R$ 55,00  paga
  *   V2 Alfa 02/03 15:00  limão 5         R$ 27,50  pendente
  *   V3 Beta 20/03 09:00  coco 12 limão 8 R$ 100,00 paga (desconto 10 já abatido do valor)

@@ -7,6 +7,7 @@
  *   - KNOWN_BEHAVIOR: o ranking agrupa por NOME do cliente, não por id.
  */
 import { erro } from "../lib/erros.js";
+import { rotuloMesAno } from "../lib/periodos.js";
 import { prisma } from "../lib/prisma.js";
 
 export async function listarClientes() {
@@ -106,7 +107,7 @@ export async function excluirCliente(id) {
 
 /**
  * Totais do cliente, média de unidades por venda, unidades por mês
- * ("março de 2026", no fuso do processo) e as 5 vendas mais recentes.
+ * ("março de 2026", mês civil de Manaus) e as 5 vendas mais recentes.
  */
 export async function obterEstatisticasCliente(id) {
   const cliente = await prisma.cliente.findUnique({
@@ -124,10 +125,7 @@ export async function obterEstatisticasCliente(id) {
   const mediaQuantidade = totalVendas > 0 ? totalQuantidade / totalVendas : 0;
 
   const vendasPorMes = vendas.reduce((acc, venda) => {
-    const mes = new Date(venda.data).toLocaleString("pt-BR", {
-      month: "long",
-      year: "numeric",
-    });
+    const mes = rotuloMesAno(venda.data);
     acc[mes] = (acc[mes] || 0) + venda.quantidade;
     return acc;
   }, {});

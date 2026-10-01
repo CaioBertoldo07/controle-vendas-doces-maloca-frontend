@@ -18,7 +18,7 @@ const novaVenda = (extra = {}) => ({
   quantidade: 15,
   valor: 82.5,
   desconto: 0,
-  data: "2026-03-10T14:00:00.000Z",
+  data: "2026-03-10T14:00:00", // data-hora civil de Manaus (contrato da 0.5)
   sabores: [
     { saborId: coco.id, quantidade: 10 },
     { saborId: limao.id, quantidade: 5 },
@@ -35,7 +35,7 @@ describe("POST /api/vendas — criação", () => {
     expect(res.body).toMatchObject({
       clienteId: cliente.id,
       quantidade: 15,
-      data: "2026-03-10T14:00:00.000Z",
+      data: "2026-03-10T14:00:00.000-04:00",
       pago: false,
       dataPagamento: null,
       idempotencyKey: null,
@@ -135,11 +135,11 @@ describe("PUT /api/vendas/:id — edição", () => {
       quantidade: 8,
       valor: 44,
       desconto: 1,
-      data: "2026-03-11T09:00:00.000Z",
+      data: "2026-03-11T09:00:00",
       sabores: [{ saborId: limao.id, quantidade: 8 }],
     });
     expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ clienteId: outro.id, quantidade: 8, data: "2026-03-11T09:00:00.000Z" });
+    expect(res.body).toMatchObject({ clienteId: outro.id, quantidade: 8, data: "2026-03-11T09:00:00.000-04:00" });
     expect(n(res.body.valor)).toBe(44);
     expect(n(res.body.desconto)).toBe(1);
     expect((await itensDe(venda.id)).map((i) => [i.saborId, i.quantidade])).toEqual([[limao.id, 8]]);
@@ -227,14 +227,14 @@ describe("PATCH /api/vendas/:id/pagamento", () => {
   it("aceita dataPagamento explícita e a string 'true'", async () => {
     const res = await api(token)
       .patch(`/api/vendas/${venda.id}/pagamento`)
-      .send({ pago: "true", dataPagamento: "2026-03-20T10:00:00.000Z" });
-    expect(res.body).toMatchObject({ pago: true, dataPagamento: "2026-03-20T10:00:00.000Z" });
+      .send({ pago: "true", dataPagamento: "2026-03-20T10:00:00" });
+    expect(res.body).toMatchObject({ pago: true, dataPagamento: "2026-03-20T10:00:00.000-04:00" });
   });
 
   it("marcar como paga de novo preserva a primeira dataPagamento", async () => {
-    await api(token).patch(`/api/vendas/${venda.id}/pagamento`).send({ pago: true, dataPagamento: "2026-03-20T10:00:00.000Z" });
+    await api(token).patch(`/api/vendas/${venda.id}/pagamento`).send({ pago: true, dataPagamento: "2026-03-20T10:00:00" });
     const res = await api(token).patch(`/api/vendas/${venda.id}/pagamento`).send({ pago: true });
-    expect(res.body.dataPagamento).toBe("2026-03-20T10:00:00.000Z");
+    expect(res.body.dataPagamento).toBe("2026-03-20T10:00:00.000-04:00");
   });
 
   it("voltar para pendente limpa dataPagamento", async () => {
@@ -251,7 +251,7 @@ describe("PATCH /api/vendas/:id/pagamento", () => {
   });
 });
 
-describe("GET /api/vendas — filtros (servidor em TZ=UTC)", () => {
+describe("GET /api/vendas — filtros (calendário civil de Manaus)", () => {
   let outro;
   beforeEach(async () => {
     outro = await criarCliente("Quitanda Fictícia Boreal");
@@ -266,39 +266,44 @@ describe("GET /api/vendas — filtros (servidor em TZ=UTC)", () => {
   it("sem filtro: todas, da mais recente para a mais antiga, com cliente e itens", async () => {
     const res = await api(token).get("/api/vendas");
     expect(datas(res)).toEqual([
-      "2026-04-15T12:00:00.000Z",
-      "2026-04-01T00:30:00.000Z",
-      "2026-03-31T23:30:00.000Z",
-      "2026-03-05T12:00:00.000Z",
+      "2026-04-15T12:00:00.000-04:00",
+      "2026-04-01T00:30:00.000-04:00",
+      "2026-03-31T23:30:00.000-04:00",
+      "2026-03-05T12:00:00.000-04:00",
     ]);
     expect(res.body[0].cliente).toBeDefined();
     expect(res.body[0].sabores[0].sabor).toBeDefined();
   });
 
-  it("mes/ano usa o calendário do fuso do servidor (UTC): 31/03 23:30Z é março", async () => {
+  // Etapa 0.5 (K17): antes o mês era calculado no fuso do PROCESSO; agora é o
+  // calendário de Manaus, com o mesmo resultado em TZ=UTC e TZ=America/Manaus.
+  it("mes/ano usa o calendário civil de Manaus: 31/03 23:30 é março e 01/04 00:30 é abril", async () => {
     expect(datas(await api(token).get("/api/vendas?mes=3&ano=2026"))).toEqual([
-      "2026-03-31T23:30:00.000Z",
-      "2026-03-05T12:00:00.000Z",
+      "2026-03-31T23:30:00.000-04:00",
+      "2026-03-05T12:00:00.000-04:00",
     ]);
     expect(datas(await api(token).get("/api/vendas?mes=4&ano=2026"))).toHaveLength(2);
   });
 
-  it("KNOWN_BEHAVIOR: venda no último segundo fracionado do mês (23:59:59.500) cai fora de qualquer mês", async () => {
+  // Etapa 0.5: era o KNOWN_BEHAVIOR K16 (fim do mês em 23:59:59.000 com lte deixava
+  // 999 ms fora de qualquer mês). Corrigido com o intervalo semiaberto
+  // [1º dia 00:00, 1º dia do mês seguinte 00:00).
+  it("venda às 23:59:59,500 do último dia do mês pertence a esse mês (K16 corrigido)", async () => {
     await criarVenda({ clienteId: cliente.id, itens: [{ saborId: coco.id, quantidade: 1 }], data: new Date("2026-03-31T23:59:59.500Z") });
     const mar = datas(await api(token).get("/api/vendas?mes=3&ano=2026"));
     const abr = datas(await api(token).get("/api/vendas?mes=4&ano=2026"));
-    expect(mar).not.toContain("2026-03-31T23:59:59.500Z");
-    expect(abr).not.toContain("2026-03-31T23:59:59.500Z");
+    expect(mar).toContain("2026-03-31T23:59:59.500-04:00");
+    expect(abr).not.toContain("2026-03-31T23:59:59.500-04:00");
   });
 
   it("intervalo dataInicio/dataFim inclui o dia final inteiro", async () => {
     const res = await api(token).get("/api/vendas?dataInicio=2026-03-31&dataFim=2026-04-01");
-    expect(datas(res)).toEqual(["2026-04-01T00:30:00.000Z", "2026-03-31T23:30:00.000Z"]);
+    expect(datas(res)).toEqual(["2026-04-01T00:30:00.000-04:00", "2026-03-31T23:30:00.000-04:00"]);
   });
 
   it("intervalo tem precedência sobre mes/ano quando ambos são enviados", async () => {
     const res = await api(token).get("/api/vendas?mes=3&ano=2026&dataInicio=2026-04-10&dataFim=2026-04-30");
-    expect(datas(res)).toEqual(["2026-04-15T12:00:00.000Z"]);
+    expect(datas(res)).toEqual(["2026-04-15T12:00:00.000-04:00"]);
   });
 
   it("filtra por cliente, por pago=true/false e respeita limit", async () => {
@@ -307,6 +312,6 @@ describe("GET /api/vendas — filtros (servidor em TZ=UTC)", () => {
     expect((await api(token).get("/api/vendas?pago=true")).body).toHaveLength(2);
     expect((await api(token).get("/api/vendas?pago=false")).body).toHaveLength(2);
     expect((await api(token).get("/api/vendas?pago=talvez")).body).toHaveLength(4); // valor inválido é ignorado
-    expect(datas(await api(token).get("/api/vendas?limit=1"))).toEqual(["2026-04-15T12:00:00.000Z"]);
+    expect(datas(await api(token).get("/api/vendas?limit=1"))).toEqual(["2026-04-15T12:00:00.000-04:00"]);
   });
 });

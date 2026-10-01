@@ -17,7 +17,15 @@ import {
 // Segredos fictícios, usados só pela suíte (servidor de teste e fixtures).
 export const JWT_SECRET_TESTE = "segredo-ficticio-da-suite-de-caracterizacao";
 export const API_KEY_TESTE = "chave-ficticia-da-suite-de-caracterizacao";
-export const TZ_TESTE = "UTC";
+// Fuso do PROCESSO (servidor e testes) durante a suíte. Padrão: UTC, o fuso do
+// container de produção. MALOCA_TZ_TESTE=America/Manaus roda a mesma suíte em
+// outro fuso: as regras de negócio não podem depender do fuso da máquina
+// (Etapa 0.5, docs/tcc/etapa-0-5-politica-temporal.md).
+export const FUSOS_DE_PROCESSO_PERMITIDOS = ["UTC", "America/Manaus"];
+export const TZ_TESTE = process.env.MALOCA_TZ_TESTE || "UTC";
+if (!FUSOS_DE_PROCESSO_PERMITIDOS.includes(TZ_TESTE)) {
+  throw new Error(`⛔ MALOCA_TZ_TESTE inválido: ${TZ_TESTE} (use ${FUSOS_DE_PROCESSO_PERMITIDOS.join(" ou ")}).`);
+}
 
 const MARCADOR = "MALOCA_SUITE_URL_TESTE";
 

@@ -16,7 +16,7 @@ const custoBase = {
   quantidade: 2,
   unidade: "kg",
   valorTotal: 30,
-  data: "2026-03-15T12:00:00.000Z",
+  data: "2026-03-15T12:00:00", // data-hora civil de Manaus (contrato da 0.5)
 };
 const criarCusto = (extra = {}) => api(token).post("/api/custos").send({ ...custoBase, ...extra });
 
@@ -30,7 +30,7 @@ describe("POST /api/custos — criação", () => {
       unidade: "kg",
       observacao: "obs",
       materiaPrimaId: null,
-      data: "2026-03-15T12:00:00.000Z",
+      data: "2026-03-15T12:00:00.000-04:00",
     });
     expect(n(res.body.quantidade)).toBe(2);
     expect(n(res.body.valorTotal)).toBe(30);
@@ -131,7 +131,7 @@ describe("PUT /api/custos/:id — edição", () => {
 
   it("nova unidade e data são usadas na movimentação recriada", async () => {
     const { id } = await custoComInsumo();
-    await api(token).put(`/api/custos/${id}`).send({ unidade: "g", quantidade: 750, data: "2026-04-01T09:00:00.000Z" });
+    await api(token).put(`/api/custos/${id}`).send({ unidade: "g", quantidade: 750, data: "2026-04-01T09:00:00" });
     const [mov] = await movimentacoesDe({ custoId: id });
     expect(n(mov.quantidade)).toBe(750);
     expect(mov.data.toISOString()).toBe("2026-04-01T09:00:00.000Z");
@@ -204,9 +204,9 @@ describe("DELETE /api/custos/:id", () => {
 describe("GET /api/custos e /api/custos/resumo", () => {
   async function dataset() {
     const mp = await criarMateriaPrima({ nome: "Insumo Listado" });
-    await criarCusto({ categoria: "Matéria Prima", valorTotal: 100, data: "2026-03-01T00:00:00.000Z", materiaPrimaId: mp.id });
-    await criarCusto({ categoria: "Embalagem", valorTotal: 50.5, data: "2026-03-31T23:30:00.000Z" });
-    await criarCusto({ categoria: "Outros", valorTotal: 20, data: "2026-04-01T00:30:00.000Z" });
+    await criarCusto({ categoria: "Matéria Prima", valorTotal: 100, data: "2026-03-01", materiaPrimaId: mp.id }); // como o frontend envia
+    await criarCusto({ categoria: "Embalagem", valorTotal: 50.5, data: "2026-03-31T23:30:00" });
+    await criarCusto({ categoria: "Outros", valorTotal: 20, data: "2026-04-01T00:30:00" });
   }
 
   it("listagem filtra por mês/ano e categoria, mais recente primeiro, com o insumo", async () => {

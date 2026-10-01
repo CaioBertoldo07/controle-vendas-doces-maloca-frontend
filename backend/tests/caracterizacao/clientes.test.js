@@ -78,7 +78,7 @@ describe("CRUD de clientes", () => {
     const res = await api(token).get(`/api/clientes/${c.id}`);
     expect(res.body._count).toEqual({ vendas: 12 });
     expect(res.body.vendas).toHaveLength(10);
-    expect(res.body.vendas[0].data).toBe("2026-03-12T12:00:00.000Z");
+    expect(res.body.vendas[0].data).toBe("2026-03-12T12:00:00.000-04:00");
     expect((await api(token).get("/api/clientes/999999")).status).toBe(404);
   });
 });
@@ -104,9 +104,9 @@ describe("estatísticas e sabores por cliente", () => {
       vendasPorMes: { "março de 2026": 15, "abril de 2026": 5 },
     });
     expect(res.body.ultimasVendas.map((v) => v.data)).toEqual([
-      "2026-04-05T12:00:00.000Z",
-      "2026-03-20T12:00:00.000Z",
-      "2026-03-02T12:00:00.000Z",
+      "2026-04-05T12:00:00.000-04:00",
+      "2026-03-20T12:00:00.000-04:00",
+      "2026-03-02T12:00:00.000-04:00",
     ]);
   });
 

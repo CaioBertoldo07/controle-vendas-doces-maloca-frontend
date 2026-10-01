@@ -69,8 +69,8 @@ describe("registro automático", () => {
   });
 
   it("aceita data e pago=true informados", async () => {
-    const res = await auto(payload({ data: "2026-03-10T12:00:00.000Z", pago: true }));
-    expect(res.body.venda.data).toBe("2026-03-10T12:00:00.000Z");
+    const res = await auto(payload({ data: "2026-03-10T12:00:00", pago: true }));
+    expect(res.body.venda.data).toBe("2026-03-10T12:00:00.000-04:00");
     expect(res.body.venda.pago).toBe(true);
     expect(res.body.venda.dataPagamento).not.toBeNull();
   });
