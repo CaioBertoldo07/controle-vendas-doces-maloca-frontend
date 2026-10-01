@@ -27,6 +27,11 @@ const novaVenda = (extra = {}) => ({
 });
 const itensDe = (vendaId) =>
   prisma.vendaSabor.findMany({ where: { vendaId }, orderBy: { saborId: "asc" } });
+/** Estado completo da venda e dos itens, lido direto do banco (atomicidade). */
+const retratoVenda = async (id) => ({
+  venda: await prisma.venda.findUnique({ where: { id } }),
+  itens: await prisma.vendaSabor.findMany({ where: { vendaId: id }, orderBy: { id: "asc" } }),
+});
 
 describe("POST /api/vendas — criação", () => {
   it("cria venda pendente com itens, cliente e sabores no retorno", async () => {
@@ -63,10 +68,12 @@ describe("POST /api/vendas — criação", () => {
     expect(res.body.dataPagamento).not.toBeNull();
   });
 
-  it("KNOWN_BEHAVIOR: a quantidade total NÃO é recalculada a partir dos itens", async () => {
+  // Etapa 0.6: era KNOWN_BEHAVIOR K8 (a quantidade do payload era gravada como veio).
+  it("quantidade total é a soma dos itens; a quantidade do payload é ignorada (99 → 15)", async () => {
     const res = await api(token).post("/api/vendas").send(novaVenda({ quantidade: 99 }));
     expect(res.status).toBe(201);
-    expect(res.body.quantidade).toBe(99); // itens somam 15
+    expect(res.body.quantidade).toBe(15); // itens 10 + 5
+    expect((await prisma.venda.findUnique({ where: { id: res.body.id } })).quantidade).toBe(15);
   });
 
   it("KNOWN_BEHAVIOR: o valor vem do cliente HTTP (não é calculado pelo preço do sabor)", async () => {
@@ -166,31 +173,144 @@ describe("PUT /api/vendas/:id — edição", () => {
     expect(res.body).toEqual({ error: "Cliente e quantidade são obrigatórios" });
   });
 
-  it("KNOWN_BEHAVIOR: PUT sem 'sabores' APAGA todos os itens da venda", async () => {
+  // Etapa 0.6: era KNOWN_BEHAVIOR K2 (PUT sem 'sabores' APAGAVA todos os itens).
+  it("PUT sem 'sabores' (campo omitido) preserva os itens e a quantidade", async () => {
+    const antes = await itensDe(venda.id);
     const res = await api(token).put(`/api/vendas/${venda.id}`).send({ clienteId: cliente.id, quantidade: 15 });
     expect(res.status).toBe(200);
     expect(res.body.quantidade).toBe(15);
-    expect(await itensDe(venda.id)).toHaveLength(0);
+    expect(await itensDe(venda.id)).toEqual(antes);
   });
 
-  it("KNOWN_BEHAVIOR: edição não atômica — se o update falha, os itens já foram apagados", async () => {
-    // clienteId numérico inexistente passa na validação, os itens são apagados
-    // e só então o update falha por chave estrangeira.
+  // Etapa 0.6: era KNOWN_BEHAVIOR K3 (edição não atômica: os itens eram apagados
+  // e só então o update falhava por chave estrangeira, deixando a venda sem itens).
+  it("cliente inexistente → 404 validado ANTES de qualquer escrita; venda e itens intactos", async () => {
+    const antes = await retratoVenda(venda.id);
     const res = await api(token).put(`/api/vendas/${venda.id}`).send({
       clienteId: 999999,
       quantidade: 15,
       sabores: novaVenda().sabores,
     });
-    expect(res.status).toBe(500);
-    expect(res.body).toEqual({ error: "Erro ao atualizar venda" });
-    const depois = await prisma.venda.findUnique({ where: { id: venda.id } });
-    expect(depois.clienteId).toBe(cliente.id); // venda intacta...
-    expect(await itensDe(venda.id)).toHaveLength(0); // ...mas sem itens
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: "Cliente não encontrado" });
+    expect(await retratoVenda(venda.id)).toEqual(antes);
   });
 
   it("inexistente → 404", async () => {
     const res = await api(token).put("/api/vendas/999999").send({ clienteId: cliente.id, quantidade: 1 });
     expect(res.status).toBe(404);
+  });
+});
+
+// Etapa 0.6: edição de venda com semântica de campo omitido e atômica.
+//   sabores AUSENTE  → itens preservados (e a quantidade também);
+//   sabores PRESENTE → validados e substituídos numa transação; quantidade = Σ itens;
+//   sabores []       → 400 (venda sem item não tem sentido operacional).
+// Toda falha deixa venda e itens EXATAMENTE como estavam (lidos direto via Prisma).
+// Obs.: o middleware validateVenda continua exigindo clienteId e quantidade
+// (KNOWN_BEHAVIOR K22, mantido); a quantidade enviada não é mais persistida.
+describe("PUT /api/vendas/:id — edição parcial e atômica", () => {
+  let venda, base;
+  beforeEach(async () => {
+    venda = (await api(token).post("/api/vendas").send(novaVenda({ desconto: 2.5 }))).body;
+    base = { clienteId: cliente.id, quantidade: 1 }; // quantidade exigida pelo middleware e ignorada
+  });
+  const editar = (corpo) => api(token).put(`/api/vendas/${venda.id}`).send(corpo);
+
+  it("só desconto: muda o desconto e preserva itens, quantidade, valor e data", async () => {
+    const antes = await retratoVenda(venda.id);
+    const res = await editar({ ...base, desconto: 3 });
+    expect(res.status).toBe(200);
+    const depois = await retratoVenda(venda.id);
+    expect(n(depois.venda.desconto)).toBe(3);
+    expect({ ...depois.venda, desconto: null }).toEqual({ ...antes.venda, desconto: null });
+    expect(depois.itens).toEqual(antes.itens);
+  });
+
+  it("só valor: muda o valor e preserva o resto", async () => {
+    const antes = await retratoVenda(venda.id);
+    await editar({ ...base, valor: 70 });
+    const depois = await retratoVenda(venda.id);
+    expect(n(depois.venda.valor)).toBe(70);
+    expect({ ...depois.venda, valor: null }).toEqual({ ...antes.venda, valor: null });
+    expect(depois.itens).toEqual(antes.itens);
+  });
+
+  it("só data: muda a data e preserva o resto", async () => {
+    const antes = await retratoVenda(venda.id);
+    const res = await editar({ ...base, data: "2026-03-12T08:00:00" });
+    expect(res.body.data).toBe("2026-03-12T08:00:00.000-04:00");
+    const depois = await retratoVenda(venda.id);
+    expect({ ...depois.venda, data: null }).toEqual({ ...antes.venda, data: null });
+    expect(depois.itens).toEqual(antes.itens);
+  });
+
+  it("alterar cliente preserva os itens", async () => {
+    const outro = await criarCliente("Quitanda Fictícia Boreal");
+    const antes = await retratoVenda(venda.id);
+    await editar({ clienteId: outro.id, quantidade: 1 });
+    const depois = await retratoVenda(venda.id);
+    expect(depois.venda.clienteId).toBe(outro.id);
+    expect(depois.itens).toEqual(antes.itens);
+  });
+
+  it("alterar sabores substitui os itens e recalcula a quantidade pela soma (payload 999 → 10)", async () => {
+    const res = await editar({ ...base, quantidade: 999, sabores: [{ saborId: limao.id, quantidade: 4 }, { saborId: coco.id, quantidade: 6 }] });
+    expect(res.status).toBe(200);
+    expect(res.body.quantidade).toBe(10);
+    expect((await itensDe(venda.id)).map((i) => [i.saborId, i.quantidade])).toEqual([[coco.id, 6], [limao.id, 4]]);
+  });
+
+  it("sabores: [] → 400 e nada muda", async () => {
+    const antes = await retratoVenda(venda.id);
+    const res = await editar({ ...base, sabores: [] });
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: "Informe ao menos um sabor" });
+    expect(await retratoVenda(venda.id)).toEqual(antes);
+  });
+
+  it("falha no meio da operação (sabor inexistente: FK depois de apagar os itens) → rollback total", async () => {
+    const antes = await retratoVenda(venda.id);
+    const res = await editar({ ...base, desconto: 9, sabores: [{ saborId: coco.id, quantidade: 1 }, { saborId: 999999, quantidade: 2 }] });
+    expect(res.status).toBe(500); // sabor inexistente continua 500 (K14, mantido)
+    expect(res.body).toEqual({ error: "Erro ao atualizar venda" });
+    expect(await retratoVenda(venda.id)).toEqual(antes); // venda E itens originais
+  });
+
+  it("itens que somam zero → 400 (regra 'quantidade > 0' aplicada à soma) e nada muda", async () => {
+    const antes = await retratoVenda(venda.id);
+    const res = await editar({ ...base, sabores: [{ saborId: coco.id, quantidade: 0 }] });
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: "Quantidade deve ser maior que zero" });
+    expect(await retratoVenda(venda.id)).toEqual(antes);
+  });
+});
+
+// Etapa 0.6: Venda.quantidade = Σ VendaSabor.quantidade (fonte de verdade).
+describe("POST /api/vendas — quantidade derivada dos itens", () => {
+  it("vários sabores: payload 999, itens 2 + 3 → 5 gravado", async () => {
+    const res = await api(token).post("/api/vendas").send(novaVenda({ quantidade: 999, sabores: [{ saborId: coco.id, quantidade: 2 }, { saborId: limao.id, quantidade: 3 }] }));
+    expect(res.status).toBe(201);
+    expect((await prisma.venda.findUnique({ where: { id: res.body.id } })).quantidade).toBe(5);
+  });
+
+  it("item decimal é truncado como antes (parseInt) e a soma usa o valor gravado: 2.7 + 3 → 2 + 3 = 5", async () => {
+    const res = await api(token).post("/api/vendas").send(novaVenda({ sabores: [{ saborId: coco.id, quantidade: 2.7 }, { saborId: limao.id, quantidade: 3 }] }));
+    expect(res.body.quantidade).toBe(5);
+    expect((await itensDe(res.body.id)).map((i) => i.quantidade)).toEqual([2, 3]);
+  });
+
+  it("itens que somam zero → 400 'Quantidade deve ser maior que zero' e nada é gravado", async () => {
+    const res = await api(token).post("/api/vendas").send(novaVenda({ quantidade: 5, sabores: [{ saborId: coco.id, quantidade: 0 }] }));
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: "Quantidade deve ser maior que zero" });
+    expect(await prisma.venda.count()).toBe(0);
+  });
+
+  it("KNOWN_BEHAVIOR: item com quantidade 0 ou negativa é aceito se a soma for positiva (5 − 2 → 3)", async () => {
+    const res = await api(token).post("/api/vendas").send(novaVenda({ sabores: [{ saborId: coco.id, quantidade: 5 }, { saborId: limao.id, quantidade: -2 }] }));
+    expect(res.status).toBe(201);
+    expect(res.body.quantidade).toBe(3);
   });
 });
 

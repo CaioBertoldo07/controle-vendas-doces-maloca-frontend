@@ -23,6 +23,13 @@ beforeEach(async () => {
 const produzir = (sabores, extra = {}) =>
   api(token).post("/api/producao").send({ data: "2026-03-10T12:00:00", sabores, ...extra }); // civil de Manaus
 
+/** Estado completo: produção, itens e TODAS as movimentações (atomicidade). */
+const retratoProducao = async (id) => ({
+  producao: await prisma.producao.findUnique({ where: { id } }),
+  itens: await prisma.producaoSabor.findMany({ where: { producaoId: id }, orderBy: { id: "asc" } }),
+  movimentacoes: await prisma.movimentacaoMateriaPrima.findMany({ orderBy: { id: "asc" } }),
+});
+
 /** Saídas de produção agrupadas por matéria-prima: { [mpId]: quantidade } */
 async function saidasPorInsumo(where = {}) {
   const movs = await movimentacoesDe({ tipo: "SAIDA", ...where });
@@ -257,16 +264,20 @@ describe("PUT /api/producao/:id — edição", () => {
     expect(movs.every((m) => m.data.toISOString() === "2026-04-02T08:00:00.000Z")).toBe(true);
   });
 
-  it("KNOWN_BEHAVIOR: editar só a observação APAGA as saídas de insumo e não as recria", async () => {
+  // Etapa 0.6: era KNOWN_BEHAVIOR K1 (editar só a observação APAGAVA as saídas de
+  // insumo e não as recriava, devolvendo ao saldo um consumo que aconteceu).
+  it("editar só a observação preserva itens e saídas de insumo (campo omitido)", async () => {
     const { acucar, id } = await producaoInicial();
+    const antes = await retratoProducao(id);
     const res = await api(token).put(`/api/producao/${id}`).send({ observacao: "só texto" });
 
     expect(res.status).toBe(200);
     expect(res.body.observacao).toBe("só texto");
-    expect(res.body.sabores).toHaveLength(1); // itens continuam
-    expect(await movimentacoesDe({ producaoId: id })).toHaveLength(0); // consumo sumiu
+    const depois = await retratoProducao(id);
+    expect(depois.itens).toEqual(antes.itens);
+    expect(depois.movimentacoes).toEqual(antes.movimentacoes); // consumo preservado
     const resumo = await api(token).get("/api/materias-primas/resumo");
-    expect(resumo.body.find((m) => m.id === acucar.id).saldo).toBe(10000); // saldo "volta"
+    expect(resumo.body.find((m) => m.id === acucar.id).saldo).toBe(9500); // 10000 − 500
   });
 
   it("KNOWN_BEHAVIOR: sabor inexistente na edição → 500 e nada muda", async () => {
@@ -281,6 +292,62 @@ describe("PUT /api/producao/:id — edição", () => {
     const res = await api(token).put("/api/producao/999999").send({ observacao: "x" });
     expect(res.status).toBe(404);
     expect(res.body).toEqual({ error: "Registro não encontrado" });
+  });
+
+  // Etapa 0.6: edição parcial e atômica da produção.
+  //   sabores AUSENTE  → itens e saídas preservados; só os campos enviados mudam
+  //                      (uma data nova também é aplicada às saídas existentes);
+  //   sabores PRESENTE → validados como na criação; necessidades, saldo, itens e
+  //                      saídas substituídos numa única transação.
+  // Toda falha deixa produção, itens e TODAS as movimentações como estavam.
+  it("editar só a data preserva itens e quantidades das saídas, que passam a ter a nova data", async () => {
+    const { id } = await producaoInicial();
+    const antes = await retratoProducao(id);
+    const res = await api(token).put(`/api/producao/${id}`).send({ data: "2026-04-05T10:00:00" });
+    expect(res.status).toBe(200);
+    expect(res.body.data).toBe("2026-04-05T10:00:00.000-04:00");
+    const depois = await retratoProducao(id);
+    expect(depois.itens).toEqual(antes.itens);
+    expect(depois.movimentacoes.map((m) => [m.id, m.materiaPrimaId, n(m.quantidade)])).toEqual(
+      antes.movimentacoes.map((m) => [m.id, m.materiaPrimaId, n(m.quantidade)]),
+    );
+    const daProducao = depois.movimentacoes.filter((m) => m.producaoId === id);
+    expect(daProducao.every((m) => m.data.toISOString() === "2026-04-05T10:00:00.000Z")).toBe(true);
+  });
+
+  it("insumo insuficiente → 422 e estado exatamente igual ao anterior", async () => {
+    const { sabor, id } = await producaoInicial({ estoqueAcucar: 1000 });
+    const antes = await retratoProducao(id);
+    const res = await api(token).put(`/api/producao/${id}`).send({ observacao: "nova", sabores: [{ saborId: sabor.id, quantidade: 150 }] });
+    expect(res.status).toBe(422);
+    expect(await retratoProducao(id)).toEqual(antes);
+  });
+
+  it("falha no meio da transação (observação acima de 255 caracteres, depois de apagar itens e saídas) → rollback total", async () => {
+    const { sabor, id } = await producaoInicial();
+    const antes = await retratoProducao(id);
+    const res = await api(token).put(`/api/producao/${id}`).send({ observacao: "x".repeat(300), sabores: [{ saborId: sabor.id, quantidade: 80 }] });
+    expect(res.status).toBe(500);
+    expect(res.body).toEqual({ error: "Erro ao atualizar produção" });
+    expect(await retratoProducao(id)).toEqual(antes);
+  });
+
+  it("sabores: [] → 400 (como na criação) e nada muda", async () => {
+    const { id } = await producaoInicial();
+    const antes = await retratoProducao(id);
+    const res = await api(token).put(`/api/producao/${id}`).send({ sabores: [] });
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: "Informe ao menos um sabor" });
+    expect(await retratoProducao(id)).toEqual(antes);
+  });
+
+  it("item inválido (quantidade 0) → 400 com a mesma regra da criação e nada muda", async () => {
+    const { sabor, id } = await producaoInicial();
+    const antes = await retratoProducao(id);
+    const res = await api(token).put(`/api/producao/${id}`).send({ sabores: [{ saborId: sabor.id, quantidade: 0 }] });
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: "Quantidade inválida para um dos sabores" });
+    expect(await retratoProducao(id)).toEqual(antes);
   });
 });
 

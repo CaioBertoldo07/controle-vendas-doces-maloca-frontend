@@ -1,11 +1,11 @@
 /**
  * Produção e MRP (necessidade de insumos pela receita).
  *
- * Extraído de producaoController sem mudança de comportamento. Estão
- * preservados, entre outros (ver docs/tcc/etapa-0-3-testes-caracterizacao.md):
- *   - KNOWN_BEHAVIOR: sabor sem receita, ou sem rendimentoBase, não consome insumo;
- *   - KNOWN_BEHAVIOR: editar sem `sabores` apaga as saídas e não as recria;
- *   - KNOWN_BEHAVIOR: sabor inexistente lança Error comum (a API responde 500).
+ * Edição parcial e atômica desde a Etapa 0.6 (editar sem `sabores` preserva
+ * itens e saídas). Mantidos de propósito (KNOWN_BEHAVIOR):
+ *   - K12: sabor sem receita, ou sem rendimentoBase, não consome insumo
+ *     (a produção real ainda não tem receitas; bloquear pararia a operação);
+ *   - K14: sabor inexistente lança Error comum (a API responde 500).
  */
 import { ErroDominio, erro } from "../lib/erros.js";
 import {
@@ -119,13 +119,18 @@ export async function listarProducao({ mes, ano } = {}) {
   });
 }
 
-export async function criarProducao({ data, observacao, sabores } = {}) {
-  if (!sabores || sabores.length === 0) throw erro(400, "Informe ao menos um sabor");
+/** Mesma validação de itens na criação e na edição com `sabores`. */
+function validarItens(sabores) {
+  if (!Array.isArray(sabores) || sabores.length === 0) throw erro(400, "Informe ao menos um sabor");
 
   for (const s of sabores) {
     if (!s.saborId || !s.quantidade || parseInt(s.quantidade) <= 0)
       throw erro(400, "Quantidade inválida para um dos sabores");
   }
+}
+
+export async function criarProducao({ data, observacao, sabores } = {}) {
+  validarItens(sabores);
 
   const necessidades = await calcularNecessidades(sabores);
 
@@ -164,34 +169,46 @@ export async function atualizarProducao(id, { data, observacao, sabores } = {}) 
   });
   if (!existe) throw erro(404, "Registro não encontrado");
 
-  // Sem `sabores`, as necessidades ficam vazias: as saídas antigas são
-  // apagadas e nenhuma é recriada (KNOWN_BEHAVIOR).
+  // Etapa 0.6 (corrige o KNOWN_BEHAVIOR K1):
+  //   `sabores` ausente  → itens e saídas preservados; uma data nova também é
+  //                        aplicada às saídas existentes;
+  //   `sabores` presente → validados como na criação; saldo, itens e saídas
+  //                        substituídos na transação.
+  // Qualquer falha desfaz a transação inteira.
+  const substituiItens = sabores !== undefined;
   let necessidades = {};
-  if (sabores && sabores.length > 0) {
+  if (substituiItens) {
+    validarItens(sabores);
     necessidades = await calcularNecessidades(sabores);
   }
+  const novaData = data ? lerDataCivil(data) : undefined;
 
   return prisma.$transaction(async (tx) => {
-    // Reverter as saídas anteriores desta produção antes de checar o saldo
-    await tx.movimentacaoMateriaPrima.deleteMany({
-      where: { producaoId: parseInt(id) },
-    });
+    if (substituiItens) {
+      // Reverter as saídas anteriores desta produção antes de checar o saldo
+      await tx.movimentacaoMateriaPrima.deleteMany({
+        where: { producaoId: parseInt(id) },
+      });
 
-    const faltantes = await verificarFaltantes(necessidades, tx);
-    if (faltantes.length > 0) throw estoqueInsuficiente(faltantes); // rollback
+      const faltantes = await verificarFaltantes(necessidades, tx);
+      if (faltantes.length > 0) throw estoqueInsuficiente(faltantes); // rollback
 
-    if (sabores) {
       await tx.producaoSabor.deleteMany({ where: { producaoId: parseInt(id) } });
+    } else if (novaData) {
+      await tx.movimentacaoMateriaPrima.updateMany({
+        where: { producaoId: parseInt(id) },
+        data: { data: novaData },
+      });
     }
 
     const prod = await tx.producao.update({
       where: { id: parseInt(id) },
       data: {
-        ...(data && { data: lerDataCivil(data) }),
+        ...(novaData && { data: novaData }),
         ...(observacao !== undefined && {
           observacao: observacao?.trim() || null,
         }),
-        ...(sabores && {
+        ...(substituiItens && {
           sabores: {
             create: sabores.map((s) => ({
               saborId: parseInt(s.saborId),
@@ -205,7 +222,7 @@ export async function atualizarProducao(id, { data, observacao, sabores } = {}) 
       },
     });
 
-    await registrarSaidas(tx, necessidades, prod.id, data ? lerDataCivil(data) : existe.data);
+    if (substituiItens) await registrarSaidas(tx, necessidades, prod.id, novaData ?? existe.data);
 
     return prod;
   });

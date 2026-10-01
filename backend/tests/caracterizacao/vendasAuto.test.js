@@ -51,6 +51,12 @@ describe("autenticação do /vendas/auto", () => {
 });
 
 describe("registro automático", () => {
+  it("quantidade enviada pelo chamador é ignorada: gravada = soma dos itens (999 → 30)", async () => {
+    const res = await auto(payload({ quantidade: 999 }));
+    expect(res.status).toBe(201);
+    expect((await prisma.venda.findUnique({ where: { id: res.body.venda.id } })).quantidade).toBe(30);
+  });
+
   it("resolve cliente e sabores por texto; quantidade = soma dos itens; nasce pendente", async () => {
     const res = await auto(payload({ desconto: 5 }));
     expect(res.status).toBe(201);
@@ -126,10 +132,72 @@ describe("validações e entidades não encontradas", () => {
     expect(await prisma.venda.count()).toBe(0);
   });
 
-  it("KNOWN_BEHAVIOR: clienteNome que normaliza para vazio ('!!!') registra venda para o PRIMEIRO cliente", async () => {
+  // Etapa 0.6: era KNOWN_BEHAVIOR K5 ("!!!" registrava a venda para o PRIMEIRO cliente).
+  it("clienteNome que normaliza para vazio ('!!!') → 400 INVALIDO; nada é gravado", async () => {
     await criarCliente("Outro Cliente Fictício");
     const res = await auto(payload({ clienteNome: "!!!" }));
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: 'clienteNome inválido: "!!!" não contém letras nem números', tipo: "INVALIDO" });
+    expect(await prisma.venda.count()).toBe(0);
+  });
+});
+
+// Etapa 0.6: a venda automática só é registrada com cliente e sabores resolvidos
+// sem ambiguidade. Ambiguidade → 422 com candidatos, sem nenhuma escrita.
+describe("desambiguação no /vendas/auto", () => {
+  const nadaGravado = async () => {
+    expect(await prisma.venda.count()).toBe(0);
+    expect(await prisma.vendaSabor.count()).toBe(0);
+  };
+
+  it("cliente por parcial único resolve e registra", async () => {
+    const res = await auto(payload({ clienteNome: "aurora" }));
     expect(res.status).toBe(201);
     expect(res.body.venda.clienteId).toBe(cliente.id);
+  });
+
+  it("cliente ambíguo → 422 com candidatos (id e nome) e nenhuma escrita", async () => {
+    const norte = await criarCliente("Frutaria Fictícia Norte");
+    const sul = await criarCliente("Frutaria Fictícia Sul");
+    const res = await auto(payload({ clienteNome: "frutaria" }));
+    expect(res.status).toBe(422);
+    expect(res.body).toEqual({
+      error: 'Cliente ambíguo: "frutaria"',
+      tipo: "AMBIGUO",
+      candidatos: [{ id: norte.id, nome: norte.nome }, { id: sul.id, nome: sul.nome }],
+    });
+    await nadaGravado();
+  });
+
+  it("sabor ambíguo → 422 com candidatos por sabor e nenhuma escrita", async () => {
+    const queimado = await criarSabor({ nome: "Coco Queimado Fictício" });
+    const res = await auto(payload());
+    expect(res.status).toBe(422);
+    expect(res.body).toEqual({
+      error: "Sabores ambíguos",
+      tipo: "AMBIGUO",
+      ambiguos: [{ nome: "coco", candidatos: [{ id: coco.id, nome: coco.nome }, { id: queimado.id, nome: queimado.nome }] }],
+      encontrados: 1,
+    });
+    await nadaGravado();
+  });
+
+  it("sabor só com pontuação ou sem nome → 400 INVALIDO e nenhuma escrita", async () => {
+    const res = await auto(payload({ sabores: [{ nome: "coco", quantidade: 1 }, { nome: "...", quantidade: 2 }, { quantidade: 3 }] }));
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: "Sabores inválidos", tipo: "INVALIDO", invalidos: ["...", null] });
+    await nadaGravado();
+  });
+
+  it("idempotência: uma tentativa ambígua não consome a chave; a corrigida registra uma vez só", async () => {
+    await criarCliente("Mercearia Fictícia Aurora Filial");
+    const ambigua = await auto(payload({ clienteNome: "aurora", idempotencyKey: "msg-ficticia-ambigua" }));
+    expect(ambigua.status).toBe(422);
+    const corrigida = await auto(payload({ clienteNome: "Mercearia Fictícia Aurora", idempotencyKey: "msg-ficticia-ambigua" }));
+    const repetida = await auto(payload({ clienteNome: "Mercearia Fictícia Aurora", idempotencyKey: "msg-ficticia-ambigua" }));
+    expect(corrigida.status).toBe(201);
+    expect(repetida.status).toBe(200);
+    expect(repetida.body.duplicata).toBe(true);
+    expect(await prisma.venda.count()).toBe(1);
   });
 });

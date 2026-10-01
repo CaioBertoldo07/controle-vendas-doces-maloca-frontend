@@ -1,54 +1,85 @@
+/**
+ * Resolução de cliente e sabores a partir de texto livre (ex.: /vendas/auto e,
+ * no futuro, os agentes).
+ *
+ * Etapa 0.6: a resolução CLASSIFICA o resultado e nunca escolhe um registro
+ * por ordem de cadastro:
+ *   EXATO          → nome normalizado igual a um único registro;
+ *   PARCIAL_UNICO  → nenhum exato e um único registro "contém/está contido";
+ *   AMBIGUO        → mais de um candidato (exato ou parcial): nenhum é escolhido;
+ *   NAO_ENCONTRADO → nenhum candidato;
+ *   INVALIDO       → o texto não tem letras nem números depois de normalizado.
+ * Candidatos saem só com { id, nome }.
+ */
 import { prisma } from "../lib/prisma.js";
+
+export const RESOLUCAO = Object.freeze({
+  EXATO: "EXATO",
+  PARCIAL_UNICO: "PARCIAL_UNICO",
+  AMBIGUO: "AMBIGUO",
+  NAO_ENCONTRADO: "NAO_ENCONTRADO",
+  INVALIDO: "INVALIDO",
+});
 
 // Normaliza string para comparação: "Doce de Leite" -> "docedeleite"
 function normalizar(str) {
   return str
     .toLowerCase()
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "") // remove acentos
+    .replace(/[̀-ͯ]/g, "") // remove acentos
     .replace(/[^a-z0-9]/g, ""); // remove espaços e especiais
 }
 
-export async function resolverCliente(nomeTexto) {
-  const clientes = await prisma.cliente.findMany();
-  const alvo = normalizar(nomeTexto);
+const candidato = (r) => ({ id: r.id, nome: r.nome });
 
-  // 1. Busca exata normalizada
-  const exato = clientes.find((c) => normalizar(c.nome) === alvo);
-  if (exato) return exato;
+/**
+ * Classifica `texto` contra `registros` ({ id, nome }, na ordem desejada para
+ * os candidatos). Pura. Devolve { tipo, registro? , candidatos? }.
+ */
+export function classificar(texto, registros) {
+  const alvo = typeof texto === "string" ? normalizar(texto) : "";
+  if (!alvo) return { tipo: RESOLUCAO.INVALIDO };
 
-  // 2. Busca por contém (ex: "João" encontra "João Santos")
-  const parcial = clientes.find(
-    (c) =>
-      normalizar(c.nome).includes(alvo) || alvo.includes(normalizar(c.nome)),
-  );
-  if (parcial) return parcial;
+  const comNome = registros.map((r) => ({ r, n: normalizar(r.nome) }));
 
-  return null; // não encontrado
+  // 1. Exato tem prioridade sobre parcial
+  const exatos = comNome.filter((x) => x.n === alvo).map((x) => x.r);
+  if (exatos.length === 1) return { tipo: RESOLUCAO.EXATO, registro: exatos[0] };
+  if (exatos.length > 1) return { tipo: RESOLUCAO.AMBIGUO, candidatos: exatos.map(candidato) };
+
+  // 2. Parcial: o texto contém o nome ou está contido nele
+  const parciais = comNome.filter((x) => x.n && (x.n.includes(alvo) || alvo.includes(x.n))).map((x) => x.r);
+  if (parciais.length === 1) return { tipo: RESOLUCAO.PARCIAL_UNICO, registro: parciais[0] };
+  if (parciais.length > 1) return { tipo: RESOLUCAO.AMBIGUO, candidatos: parciais.map(candidato) };
+
+  return { tipo: RESOLUCAO.NAO_ENCONTRADO };
 }
 
-export async function resolverSabores(saboresTexto) {
-  // saboresTexto: [{ nome: "Tradicional", quantidade: 20 }, ...]
-  const saboresDB = await prisma.sabor.findMany({ where: { ativo: true } });
+/** { tipo, cliente } se resolvido; { tipo, candidatos } se ambíguo; { tipo } nos demais. */
+export async function resolverCliente(nomeTexto) {
+  const clientes = await prisma.cliente.findMany({ orderBy: { id: "asc" } });
+  const { tipo, registro, candidatos } = classificar(nomeTexto, clientes);
+  if (registro) return { tipo, cliente: registro };
+  return candidatos ? { tipo, candidatos } : { tipo };
+}
 
-  const resultado = [];
-  const naoEncontrados = [];
+/**
+ * itens: [{ nome, quantidade }]. Só sabores ATIVOS são considerados.
+ * Devolve { sabores: [{ saborId, quantidade }], naoEncontrados: [nome],
+ * ambiguos: [{ nome, candidatos }], invalidos: [nome | null] }.
+ * KNOWN_BEHAVIOR (mantido): o mesmo sabor pode aparecer em dois itens.
+ */
+export async function resolverSabores(saboresTexto) {
+  const saboresDB = await prisma.sabor.findMany({ where: { ativo: true }, orderBy: { id: "asc" } });
+
+  const resultado = { sabores: [], naoEncontrados: [], ambiguos: [], invalidos: [] };
 
   for (const item of saboresTexto) {
-    const alvo = normalizar(item.nome);
-
-    const encontrado = saboresDB.find(
-      (s) =>
-        normalizar(s.nome) === alvo ||
-        normalizar(s.nome).includes(alvo) ||
-        alvo.includes(normalizar(s.nome)),
-    );
-
-    if (encontrado) {
-      resultado.push({ saborId: encontrado.id, quantidade: item.quantidade });
-    } else {
-      naoEncontrados.push(item.nome);
-    }
+    const { tipo, registro, candidatos } = classificar(item?.nome, saboresDB);
+    if (registro) resultado.sabores.push({ saborId: registro.id, quantidade: item.quantidade });
+    else if (tipo === RESOLUCAO.AMBIGUO) resultado.ambiguos.push({ nome: item.nome, candidatos });
+    else if (tipo === RESOLUCAO.INVALIDO) resultado.invalidos.push(item?.nome ?? null);
+    else resultado.naoEncontrados.push(item.nome);
   }
-  return { sabores: resultado, naoEncontrados };
+  return resultado;
 }

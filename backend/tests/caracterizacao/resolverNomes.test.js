@@ -1,66 +1,83 @@
-// Caracterização (nível A — função real, sem HTTP): src/services/resolverNomes.js
-// Regra atual: normaliza (minúsculas, sem acentos, só [a-z0-9]); tenta match
-// exato; senão devolve o PRIMEIRO registro cujo nome contém o texto ou está
-// contido nele. A ordem é a do findMany sem orderBy (na prática, por id).
+// Resolução de nomes (nível A, função real, sem HTTP): src/services/resolverNomes.js
+// Normalização: minúsculas, sem acentos, só [a-z0-9].
+// Etapa 0.6: a resolução deixou de devolver "entidade ou null" e passou a
+// CLASSIFICAR o resultado: EXATO | PARCIAL_UNICO | AMBIGUO | NAO_ENCONTRADO |
+// INVALIDO. Ambiguidade e entrada vazia nunca escolhem um registro (eram os
+// KNOWN_BEHAVIOR K4 e K5). Ver docs/tcc/etapa-0-6-invariantes-criticas.md.
 // O import acontece depois do setup, então usa o banco de teste.
 import { describe, expect, it } from "vitest";
-import { resolverCliente, resolverSabores } from "../../src/services/resolverNomes.js";
+import { RESOLUCAO, resolverCliente, resolverSabores } from "../../src/services/resolverNomes.js";
 import { criarCliente, criarSabor } from "./helpers/fixtures.js";
+
+const { EXATO, PARCIAL_UNICO, AMBIGUO, NAO_ENCONTRADO, INVALIDO } = RESOLUCAO;
+const candidato = (r) => ({ id: r.id, nome: r.nome });
 
 describe("resolverCliente", () => {
   it("match exato ignorando maiúsculas, acentos, espaços e pontuação", async () => {
     const c = await criarCliente("Quitanda São João Fictícia");
     for (const texto of ["quitanda são joão fictícia", "QUITANDA SAO JOAO FICTICIA", "Quitanda-São João, Fictícia!"]) {
-      expect((await resolverCliente(texto))?.id).toBe(c.id);
+      expect(await resolverCliente(texto)).toEqual({ tipo: EXATO, cliente: expect.objectContaining({ id: c.id }) });
     }
   });
 
-  it("match parcial: texto contido no nome", async () => {
+  it("parcial único: texto contido no nome", async () => {
     const c = await criarCliente("Mercearia Fictícia Aurora");
-    expect((await resolverCliente("aurora"))?.id).toBe(c.id);
+    expect(await resolverCliente("aurora")).toEqual({ tipo: PARCIAL_UNICO, cliente: expect.objectContaining({ id: c.id }) });
   });
 
-  it("match parcial reverso: nome contido no texto", async () => {
+  it("parcial único reverso: nome contido no texto", async () => {
     const c = await criarCliente("Mercearia Aurora");
-    expect((await resolverCliente("Mercearia Aurora filial centro"))?.id).toBe(c.id);
+    const r = await resolverCliente("Mercearia Aurora filial centro");
+    expect(r).toEqual({ tipo: PARCIAL_UNICO, cliente: expect.objectContaining({ id: c.id }) });
   });
 
   it("exato tem prioridade sobre parcial, mesmo que o parcial venha antes", async () => {
     await criarCliente("Restaurante Fictício Verde Filial");
     const exato = await criarCliente("Restaurante Fictício Verde");
-    expect((await resolverCliente("restaurante ficticio verde"))?.id).toBe(exato.id);
+    const r = await resolverCliente("restaurante ficticio verde");
+    expect(r).toEqual({ tipo: EXATO, cliente: expect.objectContaining({ id: exato.id }) });
   });
 
-  it("sem correspondência → null", async () => {
+  it("inexistente → NAO_ENCONTRADO", async () => {
     await criarCliente("Mercearia Fictícia Aurora");
-    expect(await resolverCliente("Padaria Inexistente")).toBeNull();
+    expect(await resolverCliente("Padaria Inexistente")).toEqual({ tipo: NAO_ENCONTRADO });
   });
 
-  it("KNOWN_BEHAVIOR: resolução ambígua escolhe silenciosamente o PRIMEIRO candidato (menor id)", async () => {
+  // Etapa 0.6: era KNOWN_BEHAVIOR K4 (escolhia em silêncio o PRIMEIRO candidato).
+  it("parcial múltiplo → AMBIGUO com os candidatos (id e nome), sem escolher nenhum", async () => {
     const norte = await criarCliente("Quitanda Fictícia Norte");
-    await criarCliente("Quitanda Fictícia Sul");
-    await criarCliente("Quitanda Fictícia Leste");
-    expect((await resolverCliente("quitanda"))?.id).toBe(norte.id);
+    const sul = await criarCliente("Quitanda Fictícia Sul");
+    const leste = await criarCliente("Quitanda Fictícia Leste");
+    await criarCliente("Mercearia Fictícia Aurora");
+    expect(await resolverCliente("quitanda")).toEqual({
+      tipo: AMBIGUO,
+      candidatos: [candidato(norte), candidato(sul), candidato(leste)],
+    });
   });
 
-  it("KNOWN_BEHAVIOR: texto que normaliza para vazio casa com o primeiro cliente", async () => {
-    const primeiro = await criarCliente("Cliente Fictício Alfa");
-    await criarCliente("Cliente Fictício Beta");
-    expect((await resolverCliente("!!!"))?.id).toBe(primeiro.id);
-    expect((await resolverCliente(""))?.id).toBe(primeiro.id);
+  it("dois clientes com o mesmo nome normalizado → AMBIGUO mesmo no match exato", async () => {
+    const a = await criarCliente("Quitanda São João");
+    const b = await criarCliente("Quitanda Sao Joao"); // o cadastro aceita: a duplicidade não normaliza acentos (K20)
+    expect(await resolverCliente("quitanda sao joao")).toEqual({ tipo: AMBIGUO, candidatos: [candidato(a), candidato(b)] });
   });
 
-  it("sem nenhum cliente cadastrado → null (não lança)", async () => {
-    expect(await resolverCliente("qualquer")).toBeNull();
+  // Etapa 0.6: era KNOWN_BEHAVIOR K5 (texto que normaliza para vazio casava com o primeiro cliente).
+  it.each(["", "   ", "!!!", "...", "—", null, undefined, 123])("entrada sem texto significativo (%o) → INVALIDO", async (texto) => {
+    await criarCliente("Cliente Fictício Alfa");
+    expect(await resolverCliente(texto)).toEqual({ tipo: INVALIDO });
+  });
+
+  it("sem nenhum cliente cadastrado → NAO_ENCONTRADO (não lança)", async () => {
+    expect(await resolverCliente("qualquer")).toEqual({ tipo: NAO_ENCONTRADO });
   });
 });
 
 describe("resolverSabores", () => {
-  it("resolve vários nomes, preserva quantidades e lista os não encontrados", async () => {
+  it("exato, maiúsculas/acentos e parcial único; preserva quantidades e lista os não encontrados", async () => {
     const maracuja = await criarSabor({ nome: "Maracujá Fictício" });
     const coco = await criarSabor({ nome: "Coco Fictício" });
     const r = await resolverSabores([
-      { nome: "maracuja ficticio", quantidade: 4 },
+      { nome: "MARACUJA FICTICIO", quantidade: 4 },
       { nome: "COCO", quantidade: 6 },
       { nome: "Pistache", quantidade: 1 },
     ]);
@@ -70,22 +87,45 @@ describe("resolverSabores", () => {
         { saborId: coco.id, quantidade: 6 },
       ],
       naoEncontrados: ["Pistache"],
+      ambiguos: [],
+      invalidos: [],
     });
   });
 
-  it("sabor inativo não é resolvido", async () => {
+  it("sabor inativo não é resolvido (nem como candidato)", async () => {
     await criarSabor({ nome: "Cupuaçu Fictício", ativo: false });
     expect(await resolverSabores([{ nome: "Cupuaçu Fictício", quantidade: 1 }])).toEqual({
       sabores: [],
       naoEncontrados: ["Cupuaçu Fictício"],
+      ambiguos: [],
+      invalidos: [],
     });
   });
 
-  it("KNOWN_BEHAVIOR: parcial ambíguo escolhe o primeiro ativo ('leite' → 'Doce de Leite')", async () => {
+  // Etapa 0.6: era KNOWN_BEHAVIOR K4 ("leite" escolhia o primeiro: "Doce de Leite").
+  it("parcial múltiplo → ambíguo com candidatos; inativo não entra na lista", async () => {
     const doce = await criarSabor({ nome: "Doce de Leite Fictício" });
-    await criarSabor({ nome: "Leite Ninho Fictício" });
+    const ninho = await criarSabor({ nome: "Leite Ninho Fictício" });
+    await criarSabor({ nome: "Leite Condensado Inativo", ativo: false });
     const r = await resolverSabores([{ nome: "leite", quantidade: 2 }]);
-    expect(r.sabores).toEqual([{ saborId: doce.id, quantidade: 2 }]);
+    expect(r).toEqual({
+      sabores: [],
+      naoEncontrados: [],
+      ambiguos: [{ nome: "leite", candidatos: [candidato(doce), candidato(ninho)] }],
+      invalidos: [],
+    });
+  });
+
+  it("exato tem prioridade sobre parcial ('Coco' com 'Coco' e 'Coco Queimado')", async () => {
+    const coco = await criarSabor({ nome: "Coco" });
+    await criarSabor({ nome: "Coco Queimado" });
+    expect((await resolverSabores([{ nome: "coco", quantidade: 1 }])).sabores).toEqual([{ saborId: coco.id, quantidade: 1 }]);
+  });
+
+  it("nome vazio, só pontuação ou ausente → inválido (não resolve e não lança)", async () => {
+    await criarSabor({ nome: "Coco Fictício" });
+    const r = await resolverSabores([{ nome: "!!!", quantidade: 1 }, { nome: "", quantidade: 1 }, { quantidade: 1 }]);
+    expect(r).toEqual({ sabores: [], naoEncontrados: [], ambiguos: [], invalidos: ["!!!", "", null] });
   });
 
   it("KNOWN_BEHAVIOR: o mesmo sabor pode ser resolvido duas vezes (itens duplicados)", async () => {

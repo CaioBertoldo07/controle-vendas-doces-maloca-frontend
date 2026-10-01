@@ -2,11 +2,14 @@
  * Vendas: registro manual e automático, edição, pagamento, exclusão,
  * consultas, totais e relatório mensal.
  *
- * Extraído de vendasController SEM mudança de comportamento. Preservados de
- * propósito (ver docs/tcc/etapa-0-3-testes-caracterizacao.md, K2/K3/K7–K9):
- *   - KNOWN_BEHAVIOR: `valor` e `quantidade` vêm do chamador (não derivam dos itens);
- *   - KNOWN_BEHAVIOR: a venda não valida estoque e aceita sabor inativo;
- *   - KNOWN_BEHAVIOR: a edição NÃO é atômica e, sem `sabores`, apaga os itens.
+ * Invariantes (Etapa 0.6, docs/tcc/etapa-0-6-invariantes-criticas.md):
+ *   - Venda.quantidade = Σ VendaSabor.quantidade (a quantidade do corpo é ignorada);
+ *   - a edição é atômica e respeita campo omitido (`sabores` ausente preserva itens);
+ *   - /vendas/auto só grava com cliente e sabores resolvidos sem ambiguidade.
+ * Mantidos de propósito (KNOWN_BEHAVIOR):
+ *   - K7: `valor` vem do chamador (não deriva do preço do sabor);
+ *   - K9: a venda não valida estoque e aceita sabor inativo;
+ *   - item com quantidade 0 ou negativa é aceito se a soma for positiva.
  * Os objetos devolvidos têm o mesmo formato das respostas atuais da API
  * (inclusive valores monetários como string com 2 casas nos totais).
  */
@@ -21,7 +24,14 @@ import {
   nomeDoMes,
 } from "../lib/periodos.js";
 import { prisma } from "../lib/prisma.js";
-import { resolverCliente, resolverSabores } from "./resolverNomes.js";
+import { RESOLUCAO, resolverCliente, resolverSabores } from "./resolverNomes.js";
+
+/** Itens como são gravados: ids e quantidades inteiros (parseInt, como antes). */
+const itensDaVenda = (sabores) =>
+  sabores.map((s) => ({ saborId: parseInt(s.saborId), quantidade: parseInt(s.quantidade) }));
+
+/** Fonte de verdade da quantidade da venda. */
+export const somarQuantidades = (itens) => itens.reduce((s, i) => s + i.quantidade, 0);
 
 const INCLUIR_CLIENTE_E_SABORES = {
   cliente: true,
@@ -60,8 +70,24 @@ export async function criarVendaPorTexto({
     if (vendaExistente) return { duplicata: true, venda: vendaExistente };
   }
 
-  // KNOWN_BEHAVIOR: resolução ambígua escolhe o primeiro candidato
-  const cliente = await resolverCliente(clienteNome);
+  // Cliente e sabores precisam estar resolvidos sem ambiguidade (Etapa 0.6).
+  // INVALIDO → 400, NAO_ENCONTRADO → 404, AMBIGUO → 422 com candidatos;
+  // nada é gravado antes disso (a venda é um único nested write no fim).
+  const resolucao = await resolverCliente(clienteNome);
+  if (resolucao.tipo === RESOLUCAO.INVALIDO) {
+    throw new ErroDominio(400, {
+      error: `clienteNome inválido: "${clienteNome}" não contém letras nem números`,
+      tipo: RESOLUCAO.INVALIDO,
+    });
+  }
+  if (resolucao.tipo === RESOLUCAO.AMBIGUO) {
+    throw new ErroDominio(422, {
+      error: `Cliente ambíguo: "${clienteNome}"`,
+      tipo: RESOLUCAO.AMBIGUO,
+      candidatos: resolucao.candidatos,
+    });
+  }
+  const cliente = resolucao.cliente;
   if (!cliente) {
     throw new ErroDominio(404, {
       error: `Cliente não encontrado: "${clienteNome}"`,
@@ -69,11 +95,22 @@ export async function criarVendaPorTexto({
     });
   }
 
-  const { sabores: saboresResolvidos, naoEncontrados } = await resolverSabores(sabores);
+  const { sabores: saboresResolvidos, naoEncontrados, ambiguos, invalidos } = await resolverSabores(sabores);
+  if (invalidos.length > 0) {
+    throw new ErroDominio(400, { error: "Sabores inválidos", tipo: RESOLUCAO.INVALIDO, invalidos });
+  }
   if (naoEncontrados.length > 0) {
     throw new ErroDominio(404, {
       error: "Sabores não encontrados",
       naoEncontrados,
+      encontrados: saboresResolvidos.length,
+    });
+  }
+  if (ambiguos.length > 0) {
+    throw new ErroDominio(422, {
+      error: "Sabores ambíguos",
+      tipo: RESOLUCAO.AMBIGUO,
+      ambiguos,
       encontrados: saboresResolvidos.length,
     });
   }
@@ -117,6 +154,12 @@ export async function criarVenda({
     throw erro(400, "Dados incompletos");
   }
 
+  // A quantidade do corpo continua exigida (middleware), mas o total gravado é
+  // a soma dos itens (Etapa 0.6); a regra "maior que zero" vale para a soma.
+  const itens = itensDaVenda(sabores);
+  const quantidadeTotal = somarQuantidades(itens);
+  if (!(quantidadeTotal > 0)) throw erro(400, "Quantidade deve ser maior que zero");
+
   const cliente = await prisma.cliente.findUnique({
     where: { id: parseInt(clienteId) },
   });
@@ -127,17 +170,14 @@ export async function criarVenda({
   return prisma.venda.create({
     data: {
       clienteId: parseInt(clienteId),
-      quantidade: parseInt(quantidade),
+      quantidade: quantidadeTotal,
       valor: parseFloat(valor),
       desconto: parseFloat(desconto || 0),
       data: data ? lerDataCivil(data) : agoraCivil(),
       pago: foiPago,
       dataPagamento: foiPago ? agoraCivil() : null,
       sabores: {
-        create: sabores.map((s) => ({
-          saborId: parseInt(s.saborId),
-          quantidade: parseInt(s.quantidade),
-        })),
+        create: itens,
       },
     },
     include: INCLUIR_CLIENTE_E_SABORES,
@@ -186,43 +226,52 @@ export async function buscarVenda(id) {
   return venda;
 }
 
-export async function atualizarVenda(id, { clienteId, quantidade, valor, desconto, data, sabores, pago } = {}) {
+/**
+ * Edição com semântica de campo omitido e atômica (Etapa 0.6):
+ *   - campo ausente não muda; `sabores` ausente preserva os itens;
+ *   - `sabores` presente é validado e substitui os itens; `sabores: []` → 400;
+ *   - `quantidade` do corpo é ignorada: só muda junto com os itens (= Σ itens);
+ *   - tudo o que dá para validar é validado antes de escrever, e a escrita é
+ *     uma transação: ou tudo muda, ou nada muda.
+ */
+export async function atualizarVenda(id, { clienteId, valor, desconto, data, sabores, pago } = {}) {
   const vendaExiste = await prisma.venda.findUnique({
     where: { id: parseInt(id) },
   });
   if (!vendaExiste) throw erro(404, "Venda não encontrada");
 
-  // KNOWN_BEHAVIOR: os itens são apagados FORA de transação e SEMPRE (mesmo
-  // sem `sabores` no corpo). Se o update abaixo falhar, a venda fica sem itens.
-  // Mantido nesta etapa; a correção é uma mudança de comportamento posterior.
-  await prisma.vendaSabor.deleteMany({
-    where: { vendaId: parseInt(id) },
-  });
+  let itens;
+  if (sabores !== undefined) {
+    if (!Array.isArray(sabores) || sabores.length === 0) throw erro(400, "Informe ao menos um sabor");
+    itens = itensDaVenda(sabores);
+    if (!(somarQuantidades(itens) > 0)) throw erro(400, "Quantidade deve ser maior que zero");
+  }
+  if (clienteId) {
+    const cliente = await prisma.cliente.findUnique({ where: { id: parseInt(clienteId) } });
+    if (!cliente) throw erro(404, "Cliente não encontrado");
+  }
 
-  return prisma.venda.update({
-    where: { id: parseInt(id) },
-    data: {
-      ...(clienteId && { clienteId: parseInt(clienteId) }),
-      ...(quantidade && { quantidade: parseInt(quantidade) }),
-      ...(valor && { valor: parseFloat(valor) }),
-      // desconto usa checagem explícita: 0 é um valor válido (remover o desconto)
-      ...(desconto !== undefined && { desconto: parseFloat(desconto) || 0 }),
-      ...(data && { data: lerDataCivil(data) }),
-      // pago usa checagem explícita: false é um valor válido (voltar a pendente)
-      ...(pago !== undefined && {
-        pago: ehPago(pago),
-        dataPagamento: ehPago(pago) ? vendaExiste.dataPagamento || agoraCivil() : null,
-      }),
-      ...(sabores && {
-        sabores: {
-          create: sabores.map((s) => ({
-            saborId: parseInt(s.saborId),
-            quantidade: parseInt(s.quantidade),
-          })),
-        },
-      }),
-    },
-    include: INCLUIR_CLIENTE_E_SABORES,
+  return prisma.$transaction(async (tx) => {
+    if (itens) await tx.vendaSabor.deleteMany({ where: { vendaId: parseInt(id) } });
+
+    return tx.venda.update({
+      where: { id: parseInt(id) },
+      data: {
+        ...(clienteId && { clienteId: parseInt(clienteId) }),
+        ...(itens && { quantidade: somarQuantidades(itens) }),
+        ...(valor && { valor: parseFloat(valor) }),
+        // desconto usa checagem explícita: 0 é um valor válido (remover o desconto)
+        ...(desconto !== undefined && { desconto: parseFloat(desconto) || 0 }),
+        ...(data && { data: lerDataCivil(data) }),
+        // pago usa checagem explícita: false é um valor válido (voltar a pendente)
+        ...(pago !== undefined && {
+          pago: ehPago(pago),
+          dataPagamento: ehPago(pago) ? vendaExiste.dataPagamento || agoraCivil() : null,
+        }),
+        ...(itens && { sabores: { create: itens } }),
+      },
+      include: INCLUIR_CLIENTE_E_SABORES,
+    });
   });
 }
 

@@ -1,11 +1,12 @@
 {
   "descricao": "Baseline da suíte de caracterização. Só altere de forma consciente, registrando o motivo em docs/tcc.",
-  "testes": 232,
+  "testes": 265,
   "arquivos": 13,
   "pendentesPermitidos": 0,
-  "definidaEm": "2026-09-30",
-  "motivo": "Etapa 0.5: +30 testes da política temporal (periodos.test.js, 16; temporal.test.js, 14). Nenhum teste removido (docs/tcc/etapa-0-5-politica-temporal.md)",
+  "definidaEm": "2026-10-01",
+  "motivo": "Etapa 0.6: +33 testes de invariantes (vendas +12, resolverNomes +10, vendasAuto +6, producao +5). Nenhum teste removido (docs/tcc/etapa-0-6-invariantes-criticas.md)",
   "historico": [
+    { "testes": 232, "arquivos": 13, "definidaEm": "2026-09-30", "motivo": "Etapa 0.5: +30 testes da política temporal (docs/tcc/etapa-0-5-politica-temporal.md)" },
     { "testes": 202, "arquivos": 11, "definidaEm": "2026-09-29", "motivo": "Etapa 0.3: suíte de caracterização inicial (docs/tcc/etapa-0-3-testes-caracterizacao.md)" }
   ]
 }
