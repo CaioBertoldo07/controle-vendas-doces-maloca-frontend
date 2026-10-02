@@ -28,12 +28,14 @@ describe("catálogo", () => {
   // Etapa 2: +consultarReceitas e +consultarProducaoVendasPeriodo (Agente de Estoque).
   // Etapa 3: +consultarVendasDiariasPorSabor e +consultarCustosPeriodo (Agente de Inteligência).
   // Etapa 4: +consultarComprasClientes e +consultarUnidadesClienteSabor (Agente de Vendas).
-  it("15 tools; só proporAcao escreve; todas com JSON Schema estrito para o LLM", () => {
+  // Etapa 5: +resolverEntidades e +consultarNomesClientes (Agente de Atendimento; só leitura).
+  it("17 tools; só proporAcao escreve; todas com JSON Schema estrito para o LLM", () => {
     expect([...CATALOGO.keys()]).toEqual([
       "consultarVendasPeriodo", "consultarRankingSabores", "consultarRecebiveis", "consultarEstoqueAcabado",
       "consultarSaldoMateriasPrimas", "consultarResumoProducao", "calcularNecessidadesProducao",
       "consultarEstatisticasCliente", "consultarReceitas", "consultarProducaoVendasPeriodo",
-      "consultarVendasDiariasPorSabor", "consultarCustosPeriodo", "consultarComprasClientes", "consultarUnidadesClienteSabor", "proporAcao",
+      "consultarVendasDiariasPorSabor", "consultarCustosPeriodo", "consultarComprasClientes", "consultarUnidadesClienteSabor",
+      "resolverEntidades", "consultarNomesClientes", "proporAcao",
     ]);
     expect([...CATALOGO.values()].filter((t) => t.escrita).map((t) => t.nome)).toEqual(["proporAcao"]);
     for (const t of CATALOGO.values()) {
@@ -184,6 +186,8 @@ describe("arquitetura (verificação estática do código)", () => {
       ["src/agents/agentes/estoque", /inteligencia|vendas/],
       ["src/agents/agentes/inteligencia", /estoque|vendas/], // "comum/indicadoresVendas" tem V maiúsculo: não é o agente
       ["src/agents/agentes/vendas", /estoque|inteligencia/],
+      // Etapa 5: o Atendimento também só fala pelo runtime (Coordenador)
+      ["src/agents/agentes/atendimento", /(estoque|inteligencia|vendas)\/index/],
     ]) {
       for (const [arq, src] of ler(dir)) {
         expect(importacoes(src).filter((i) => proibido.test(i)), `${dir}/${arq}`).toEqual([]);
@@ -192,7 +196,7 @@ describe("arquitetura (verificação estática do código)", () => {
   });
 
   it("agentes e LLM não importam Prisma, services nem controllers (só falam pelo contexto)", () => {
-    for (const dir of ["src/agents/agentes", "src/agents/llm", "src/agents/contratos", "src/agents/comum"]) {
+    for (const dir of ["src/agents/agentes", "src/agents/llm", "src/agents/contratos", "src/agents/comum", "src/agents/conversa"]) {
       for (const [arq, src] of ler(dir)) {
         expect(importacoes(src).filter((i) => /prisma|services|controllers|acoes\/servicoAcoes/.test(i)), `${dir}/${arq}`).toEqual([]);
       }

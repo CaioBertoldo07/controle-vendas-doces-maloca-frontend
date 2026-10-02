@@ -233,3 +233,10 @@ export async function obterRankingSabores() {
     })
     .sort((a, b) => b.totalComprado - a.totalComprado);
 }
+
+/** Nomes de clientes por id (Etapa 5: anexos da conversa; nunca enviados ao LLM). */
+export async function nomesClientes(ids = []) {
+  const unicos = [...new Set(ids.map(Number).filter((n) => Number.isInteger(n) && n > 0))];
+  if (unicos.length === 0) return [];
+  return prisma.cliente.findMany({ where: { id: { in: unicos } }, select: { id: true, nome: true }, orderBy: { id: "asc" } });
+}

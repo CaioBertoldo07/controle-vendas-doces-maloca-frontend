@@ -83,3 +83,14 @@ export async function resolverSabores(saboresTexto) {
   }
   return resultado;
 }
+
+/**
+ * Um sabor ATIVO a partir de texto livre (Etapa 5, Atendimento): mesma
+ * classificação; ambíguo devolve candidatos, nunca escolhe.
+ */
+export async function resolverSabor(nomeTexto) {
+  const sabores = await prisma.sabor.findMany({ where: { ativo: true }, orderBy: { id: "asc" } });
+  const { tipo, registro, candidatos } = classificar(nomeTexto, sabores);
+  if (registro) return { tipo, sabor: candidato(registro) };
+  return candidatos ? { tipo, candidatos } : { tipo };
+}

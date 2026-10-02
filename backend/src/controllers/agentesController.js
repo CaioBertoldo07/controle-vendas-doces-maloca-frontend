@@ -3,6 +3,7 @@
 // genéricos; o detalhe fica na auditoria (ExecucaoAgente.erro).
 import * as servicoAcoes from "../agents/acoes/servicoAcoes.js";
 import * as consultas from "../agents/consultas.js";
+import * as servicoConversa from "../agents/servicoConversa.js";
 import { STATUS_RECOMENDACAO, alterarStatus } from "../agents/runtime/recomendacoes.js";
 import { runtimePadrao } from "../agents/index.js";
 import { ErroDominio, responderErroDominio } from "../lib/erros.js";
@@ -65,4 +66,17 @@ export const aprovarAcao = responder(async (req, res) => {
 
 export const rejeitarAcao = responder(async (req, res) => {
   res.json(await servicoAcoes.rejeitarAcao(req.params.id, req.body?.motivo));
+});
+
+// ---------- Conversa com o Atendimento (Etapa 5) ----------
+
+/** POST /api/agentes/chat { conversaId?, mensagem } → resposta do assistente (sem prompt interno). */
+export const conversar = responder(async (req, res) => {
+  const { conversaId, mensagem } = req.body ?? {};
+  res.json(await servicoConversa.enviarMensagem({ usuarioId: req.usuario.id, conversaId, mensagem }, runtimePadrao));
+});
+
+/** GET /api/agentes/chat/:conversaId → histórico (só do próprio usuário), com o status atual das ações. */
+export const buscarConversa = responder(async (req, res) => {
+  res.json(await servicoConversa.obterConversa({ usuarioId: req.usuario.id, conversaId: req.params.conversaId }));
 });

@@ -5,6 +5,8 @@ import * as agentesController from "../controllers/agentesController.js";
 const router = express.Router();
 
 router.get("/", agentesController.listarAgentes);
+router.post("/chat", agentesController.conversar);
+router.get("/chat/:conversaId", agentesController.buscarConversa);
 router.get("/execucoes", agentesController.listarExecucoes);
 router.get("/execucoes/:id", agentesController.buscarExecucao);
 router.get("/recomendacoes", agentesController.listarRecomendacoes);

@@ -13,6 +13,7 @@ model Usuario {
   email    String   @unique @db.VarChar(100)
   senha    String   @db.VarChar(255)
   criadoEm DateTime @default(now())
+  conversas ConversaAgente[]
   @@map("usuarios")
 }
 
@@ -261,4 +262,39 @@ model AcaoProposta {
   @@index([status])
   @@index([criadaPorAgente])
   @@map("acoes_propostas")
+}
+
+// ============================================================================
+// Conversa gestor ↔ Atendimento (Etapa 5). NÃO é MensagemAgente: aquela tabela
+// continua sendo só comunicação entre agentes. Aqui ficam só o necessário para
+// o contexto conversacional: papel, conteúdo, dados estruturados da resposta
+// (ações propostas, anexos, limitações) e o vínculo com a execução auditada.
+// Nunca prompt de sistema, chave, stack trace ou raciocínio do modelo.
+// ============================================================================
+
+model ConversaAgente {
+  id           Int               @id @default(autoincrement())
+  usuarioId    Int
+  usuario      Usuario           @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  estado       Json? // contexto estruturado: último assunto e desambiguação pendente
+  criadaEm     DateTime          @default(now())
+  atualizadaEm DateTime          @updatedAt
+  mensagens    MensagemConversa[]
+
+  @@index([usuarioId])
+  @@map("conversas_agente")
+}
+
+model MensagemConversa {
+  id         Int            @id @default(autoincrement())
+  conversaId Int
+  conversa   ConversaAgente @relation(fields: [conversaId], references: [id], onDelete: Cascade)
+  papel      String         @db.VarChar(20) // USUARIO | ASSISTENTE
+  conteudo   String         @db.Text
+  dados      Json? // resposta estruturada: origem do texto, ações propostas, anexos, limitações
+  execucaoId Int? // ExecucaoAgente do Atendimento que produziu a resposta
+  criadaEm   DateTime       @default(now())
+
+  @@index([conversaId])
+  @@map("mensagens_conversa")
 }

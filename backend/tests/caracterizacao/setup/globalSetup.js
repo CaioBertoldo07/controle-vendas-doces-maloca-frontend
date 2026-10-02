@@ -79,6 +79,9 @@ export default async function setup(project) {
       TZ: TZ_TESTE,
       JWT_SECRET: JWT_SECRET_TESTE,
       N8N_API_KEY: API_KEY_TESTE,
+      // Etapa 5: o servidor de teste nunca tem provedor de LLM real nem chave.
+      LLM_PROVIDER: "",
+      ANTHROPIC_API_KEY: "",
     },
     stdio: ["ignore", "pipe", "pipe"],
   });

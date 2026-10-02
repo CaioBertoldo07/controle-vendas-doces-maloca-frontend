@@ -13,6 +13,7 @@ import VendaDireta from '../components/VendaDireta';
 import Estoque from '../components/Estoque';
 import MateriaPrima from '../components/MateriaPrima';
 import ThemeToggle from '../components/ThemeToggle';
+import Assistente from '../components/Assistente';
 
 function Dashboard() {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -31,6 +32,7 @@ function Dashboard() {
 
   const tabs = [
     { id: 'dashboard',      label: '📊 Dashboard' },
+    { id: 'assistente',     label: '🤖 Assistente' },
     { id: 'registrar',      label: '➕ Registrar Venda' },
     { id: 'venda-direta',   label: '🛒 Venda Direta' },
     { id: 'relatorios',     label: '📄 Relatórios' },
@@ -93,6 +95,7 @@ function Dashboard() {
         </nav>
 
         {activeTab === 'dashboard'      && <DashboardHome />}
+        {activeTab === 'assistente'     && <Assistente />}
         {activeTab === 'registrar'      && <RegistrarVenda />}
         {activeTab === 'venda-direta'   && <VendaDireta />}
         {activeTab === 'relatorios'     && <Relatorios />}

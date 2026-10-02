@@ -85,7 +85,8 @@ describe("runtime: execução e auditoria", () => {
     const rt = runtimeTeste({ extras: [agenteTeste("espiao", async (ctx) => { visto = ctx; return Object.keys(ctx); })] });
     const { saida } = await rt.executarAgente("espiao", { tipo: "TESTE" });
     expect(saida.sort()).toEqual(
-      ["agente", "encerrarRecomendacoesAusentes", "entrada", "enviarMensagem", "execucaoId", "profundidade", "raciocinar", "registrarRecomendacao", "toolsPermitidas", "usarTool"].sort(),
+      // Etapa 5: + gerarLLM (uma chamada ao LLM, sem tools) e provedorLLM (só nome e modelo, nunca o objeto)
+      ["agente", "encerrarRecomendacoesAusentes", "entrada", "enviarMensagem", "execucaoId", "gerarLLM", "profundidade", "provedorLLM", "raciocinar", "registrarRecomendacao", "toolsPermitidas", "usarTool"].sort(),
     );
     expect(Object.isFrozen(visto)).toBe(true);
   });

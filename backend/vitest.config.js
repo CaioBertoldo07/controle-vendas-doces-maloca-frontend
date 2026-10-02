@@ -26,7 +26,8 @@ export default defineConfig({
     maxWorkers: 1,
     // Fuso do processo: UTC por padrão (container de produção); ver
     // MALOCA_TZ_TESTE em setup/ambiente.js.
-    env: { TZ: TZ_TESTE },
+    // Etapa 5: sem provedor de LLM real nem chave nos processos de teste.
+    env: { TZ: TZ_TESTE, LLM_PROVIDER: "", ANTHROPIC_API_KEY: "" },
     testTimeout: 20000,
     hookTimeout: 120000,
   },

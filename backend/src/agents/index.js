@@ -8,7 +8,7 @@
 import { coordenador } from "./agentes/coordenador.js";
 import { estoque } from "./agentes/estoque/index.js";
 import { inteligencia } from "./agentes/inteligencia/index.js";
-import { atendimento } from "./agentes/stubs.js";
+import { atendimento } from "./agentes/atendimento/index.js";
 import { vendas } from "./agentes/vendas/index.js";
 import { obterProvedorConfigurado } from "./llm/provedor.js";
 import { criarRegistro } from "./runtime/registro.js";
@@ -28,7 +28,7 @@ export function criarRegistroPadrao() {
 export const runtimePadrao = criarRuntime({
   registro: criarRegistroPadrao(),
   catalogo: CATALOGO,
-  provedorLLM: obterProvedorConfigurado(),
+  provedorLLM: await obterProvedorConfigurado(), // Etapa 5: real só com LLM_PROVIDER; nunca em APP_ENV=test
 });
 
 export { criarRegistro, criarRuntime, CATALOGO };

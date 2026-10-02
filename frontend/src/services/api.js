@@ -103,4 +103,13 @@ export const estoqueAPI = {
   listar: () => api.get("/estoque"),
 };
 
+// Etapa 5: assistente conversacional (Agente de Atendimento) e ações propostas.
+// Aprovar/rejeitar usam os endpoints existentes: a aprovação é sempre do gestor.
+export const assistenteAPI = {
+  enviar: (mensagem, conversaId) => api.post("/agentes/chat", { mensagem, ...(conversaId ? { conversaId } : {}) }),
+  conversa: (conversaId) => api.get(`/agentes/chat/${conversaId}`),
+  aprovarAcao: (acaoId) => api.post(`/agentes/acoes/${acaoId}/aprovar`),
+  rejeitarAcao: (acaoId, motivo) => api.post(`/agentes/acoes/${acaoId}/rejeitar`, { motivo }),
+};
+
 export default api;

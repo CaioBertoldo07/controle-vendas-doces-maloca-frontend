@@ -1,6 +1,7 @@
 // Catálogo das tools da camada SMA (Etapa 1). Cada agente declara quais pode
 // usar; o runtime recusa qualquer outra (TOOL_NAO_PERMITIDA).
 import { proporAcao } from "./acoes.js";
+import { consultarNomesClientes, resolverEntidades } from "./atendimento.js";
 import {
   calcularNecessidadesProducao,
   consultarEstatisticasCliente,
@@ -29,6 +30,8 @@ const TODAS = [
   consultarCustosPeriodo,
   consultarComprasClientes,
   consultarUnidadesClienteSabor,
+  resolverEntidades,
+  consultarNomesClientes,
   proporAcao,
 ];
 

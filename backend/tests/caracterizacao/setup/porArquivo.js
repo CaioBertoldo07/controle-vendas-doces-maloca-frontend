@@ -4,6 +4,16 @@ import { beforeEach } from "vitest";
 import { ativarBancoDeTeste, prepararAmbienteDeTeste } from "./ambiente.js";
 
 const { url } = prepararAmbienteDeTeste();
+
+// Etapa 5: a suíte não usa rede externa (o LLM é sempre o provedor fake). Qualquer
+// fetch fora da máquina local falha na hora; o SDK da Anthropic usa fetch.
+const fetchOriginal = globalThis.fetch;
+const LOCAIS = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
+globalThis.fetch = (entrada, opcoes) => {
+  const alvo = new URL(typeof entrada === "string" || entrada instanceof URL ? entrada : entrada.url);
+  if (!LOCAIS.has(alvo.hostname)) return Promise.reject(new Error(`Rede externa bloqueada na suíte de testes: ${alvo.hostname}`));
+  return fetchOriginal(entrada, opcoes);
+};
 ativarBancoDeTeste(url);
 
 // Import dinâmico: o PrismaClient da suíte só é criado depois da ativação.

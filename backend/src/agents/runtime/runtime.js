@@ -12,16 +12,18 @@
 import { erro } from "../../lib/erros.js";
 import { prisma } from "../../lib/prisma.js";
 import { executarCicloLLM } from "../llm/cicloTools.js";
+import { CODIGOS_LLM, ErroLLM } from "../llm/erros.js";
 import { semProvedor } from "../llm/provedor.js";
 import { executarTool, falha, paraLLM } from "../tools/definirTool.js";
+import { validarResposta } from "../llm/provedor.js";
 import { encerrarAusentes, registrarRecomendacao as registrarRec } from "./recomendacoes.js";
-import { ErroExecucaoAgente, comLimite, mensagemSegura, paraRegistro } from "./util.js";
+import { ErroExecucaoAgente, TempoEsgotado, comLimite, mensagemSegura, paraRegistro } from "./util.js";
 
 // A saída de uma análise (ex.: Agente de Estoque) cabe inteira na auditoria;
 // tools e entradas continuam no limite padrão de paraRegistro.
 const LIMITE_SAIDA = 32000;
 
-export function criarRuntime({ registro, catalogo, provedorLLM = null, limiteMs = 30000, profundidadeMaxima = 4 }) {
+export function criarRuntime({ registro, catalogo, provedorLLM = null, limiteMs = 30000, profundidadeMaxima = 4, limiteChamadaLLMMs = 20000 }) {
   async function executarAgente(nome, entrada = {}, { gatilho = "INTERNO", execucaoPaiId = null, profundidade = 0 } = {}) {
     const agente = registro.obter(nome); // 404 antes de qualquer registro
     const inicio = Date.now();
@@ -39,7 +41,8 @@ export function criarRuntime({ registro, catalogo, provedorLLM = null, limiteMs 
 
     const contexto = criarContexto({ agente, execucaoId: execucao.id, entrada, profundidade });
     try {
-      const saida = await comLimite(Promise.resolve().then(() => agente.executar(contexto)), limiteMs, `agente ${nome}`);
+      // Etapa 5: um agente pode declarar o próprio limite (o Atendimento espera LLM + especialistas)
+      const saida = await comLimite(Promise.resolve().then(() => agente.executar(contexto)), agente.limiteMs ?? limiteMs, `agente ${nome}`);
       await prisma.execucaoAgente.update({
         where: { id: execucao.id },
         data: { status: "SUCESSO", saida: paraRegistro(saida, LIMITE_SAIDA), finalizadaEm: new Date(), duracaoMs: Date.now() - inicio },
@@ -124,6 +127,24 @@ export function criarRuntime({ registro, catalogo, provedorLLM = null, limiteMs 
       return executarCicloLLM({ provedor: provedorLLM, sistema, mensagens, definicoes, usarTool, maxPassos, limiteMs: limiteLLM });
     }
 
+    /**
+     * Etapa 5: UMA chamada ao LLM, sem tools (interpretação estruturada ou
+     * redação). Quem chama registra a chamada na própria saída (auditoria sem
+     * prompt nem raciocínio). Sem provedor → ErroLLM CONFIGURACAO.
+     */
+    async function gerarLLM({ sistema, mensagens, formato, maxTokens, limiteMs: limiteChamada = limiteChamadaLLMMs }) {
+      if (!provedorLLM) throw new ErroLLM(CODIGOS_LLM.CONFIGURACAO, "Nenhum provedor de LLM configurado");
+      const inicio = Date.now();
+      try {
+        const resposta = validarResposta(await comLimite(provedorLLM.gerar({ sistema, mensagens, formato, maxTokens }), limiteChamada, `provedor ${provedorLLM.nome}`));
+        return { resposta, duracaoMs: Date.now() - inicio };
+      } catch (e) {
+        if (e instanceof TempoEsgotado) throw new ErroLLM(CODIGOS_LLM.TEMPO_ESGOTADO, "O provedor de LLM não respondeu no tempo limite");
+        if (e instanceof ErroLLM) throw e;
+        throw new ErroLLM(CODIGOS_LLM.INDISPONIVEL, "Falha ao chamar o provedor de LLM");
+      }
+    }
+
     const contexto = Object.freeze({
       agente: agente.nome,
       execucaoId,
@@ -135,6 +156,8 @@ export function criarRuntime({ registro, catalogo, provedorLLM = null, limiteMs 
       registrarRecomendacao,
       encerrarRecomendacoesAusentes,
       raciocinar,
+      gerarLLM,
+      provedorLLM: provedorLLM ? { nome: provedorLLM.nome, modelo: provedorLLM.modelo ?? null } : null,
     });
     return contexto;
   }

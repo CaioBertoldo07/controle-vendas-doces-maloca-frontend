@@ -1,0 +1,70 @@
+/* Etapa 5: tela do assistente conversacional. Usa as variáveis do tema (claro/escuro). */
+.assistente { display: flex; flex-direction: column; gap: 0.75rem; }
+.assistente:hover { transform: none; }
+
+.assistente-cabecalho { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }
+.assistente-cabecalho h2 { margin-bottom: 0; }
+.assistente-aviso { color: var(--text-secondary); font-size: 0.9rem; margin: 0; }
+
+.assistente-historico {
+  display: flex; flex-direction: column; gap: 0.75rem;
+  max-height: 60vh; min-height: 240px; overflow-y: auto;
+  padding: 0.75rem; border-radius: 12px;
+  background: var(--bg-primary); border: 1px solid var(--border-color);
+}
+
+.assistente-vazio { color: var(--text-secondary); text-align: center; margin: auto 0; }
+.assistente-sugestoes, .assistente-opcoes, .assistente-acao-botoes { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: center; }
+.assistente-opcoes { justify-content: flex-start; margin-top: 0.6rem; }
+.assistente-sugestoes button, .assistente-opcoes button { font-size: 0.85rem; padding: 0.45rem 0.8rem; }
+
+.assistente-msg { display: flex; }
+.assistente-msg.usuario { justify-content: flex-end; }
+.assistente-balao {
+  max-width: min(720px, 92%); padding: 0.8rem 1rem; border-radius: 14px;
+  background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border-color);
+}
+.assistente-msg.usuario .assistente-balao { background: var(--laranja-maloca); color: var(--branco); border-color: var(--laranja-maloca); }
+.assistente-texto { white-space: pre-wrap; line-height: 1.5; overflow-wrap: anywhere; }
+.assistente-carregando { color: var(--text-secondary); font-style: italic; }
+
+.assistente-acao { margin-top: 0.75rem; padding: 0.75rem; border-radius: 10px; border: 2px dashed var(--laranja-maloca); background: var(--bg-primary); }
+.assistente-acao-topo { display: flex; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
+.assistente-acao dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.25rem 0.75rem; margin: 0.6rem 0; }
+.assistente-acao dt { color: var(--text-secondary); }
+.assistente-acao dd { margin: 0; }
+.assistente-acao-botoes { justify-content: flex-start; }
+.assistente-acao-botoes button { padding: 0.5rem 1.1rem; }
+
+.assistente-status { padding: 0.2rem 0.6rem; border-radius: 20px; font-size: 0.8rem; font-weight: 600; border: 1px solid var(--border-color); }
+.assistente-status.pendente { color: var(--laranja-maloca); border-color: var(--laranja-maloca); }
+.assistente-status.ok { color: var(--verde-sucesso); border-color: var(--verde-sucesso); }
+.assistente-status.rejeitada { color: var(--vermelho-texto); border-color: var(--vermelho-texto); }
+
+.assistente-tabela { width: 100%; margin-top: 0.75rem; border-collapse: collapse; font-size: 0.85rem; }
+.assistente-tabela caption { text-align: left; color: var(--text-secondary); margin-bottom: 0.3rem; }
+.assistente-tabela th, .assistente-tabela td { padding: 0.35rem 0.5rem; border-bottom: 1px solid var(--border-color); text-align: left; }
+
+.assistente-limitacoes { margin-top: 0.6rem; font-size: 0.85rem; color: var(--text-secondary); }
+.assistente-limitacoes summary { cursor: pointer; }
+.assistente-limitacoes ul { margin: 0.4rem 0 0 1.1rem; }
+
+.assistente-rodape { margin-top: 0.5rem; font-size: 0.75rem; color: var(--text-secondary); display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
+.assistente-degradado { background: var(--vermelho-texto); }
+
+.assistente-erro { color: var(--vermelho-texto); font-size: 0.9rem; }
+
+.assistente-entrada { display: flex; gap: 0.5rem; align-items: flex-end; }
+.assistente-entrada textarea {
+  flex: 1; resize: vertical; min-height: 2.8rem; padding: 0.7rem 0.9rem; border-radius: 10px; font: inherit;
+  background: var(--bg-primary); color: var(--text-primary); border: 2px solid var(--border-color);
+}
+.assistente-entrada textarea:focus { outline: none; border-color: var(--laranja-maloca); }
+/* .btn-primary global é width: 100%: aqui o botão tem largura própria e o campo ocupa o resto */
+.assistente-entrada textarea { min-width: 0; width: 100%; }
+.assistente-entrada button, .assistente-acao-botoes button, .assistente-cabecalho button { width: auto; flex: 0 0 auto; white-space: nowrap; }
+
+@media (max-width: 600px) {
+  .assistente-balao { max-width: 100%; }
+  .assistente-entrada { flex-direction: column; align-items: stretch; }
+}

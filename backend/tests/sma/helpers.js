@@ -10,12 +10,12 @@ export const agenteTeste = (nome, executar, tools = []) => ({ nome, descricao: `
  * (`substituir`), acrescentar (`extras`), injetar um provedor de LLM, um
  * catálogo de tools e limites.
  */
-export function runtimeTeste({ extras = [], substituir = [], provedorLLM = null, catalogo = CATALOGO, limiteMs, profundidadeMaxima } = {}) {
+export function runtimeTeste({ extras = [], substituir = [], provedorLLM = null, catalogo = CATALOGO, limiteMs, profundidadeMaxima, limiteChamadaLLMMs } = {}) {
   const trocados = new Map(substituir.map((a) => [a.nome, a]));
   const registro = criarRegistro();
   for (const a of AGENTES_PADRAO) registro.registrar(trocados.get(a.nome) ?? a);
   for (const a of extras) registro.registrar(a);
-  return criarRuntime({ registro, catalogo, provedorLLM, ...(limiteMs && { limiteMs }), ...(profundidadeMaxima && { profundidadeMaxima }) });
+  return criarRuntime({ registro, catalogo, provedorLLM, ...(limiteMs && { limiteMs }), ...(profundidadeMaxima && { profundidadeMaxima }), ...(limiteChamadaLLMMs && { limiteChamadaLLMMs }) });
 }
 
 /** Executa e devolve o erro (para asserções sobre falhas controladas). */
