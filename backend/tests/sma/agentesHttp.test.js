@@ -91,12 +91,15 @@ describe("recomendações e ações pela API do gestor", () => {
   it("aprovar executa pelo executor determinístico; repetir → 409; rejeitar outra → REJEITADA e nunca executa", async () => {
     const cliente = await criarCliente("Mercearia Fictícia Aurora");
     const coco = await criarSabor({ nome: "Coco Fictício" });
-    const proposta = () => acoes.proporAcao({
+    const proposta = (quantidade = 6) => acoes.proporAcao({
       tipo: "REGISTRAR_VENDA", descricao: "Venda relatada", criadaPorAgente: "vendas",
-      payload: { clienteId: cliente.id, sabores: [{ saborId: coco.id, quantidade: 6 }], valor: 33 },
+      payload: { clienteId: cliente.id, sabores: [{ saborId: coco.id, quantidade }], valor: 33 },
     });
     const a = await proposta();
-    const b = await proposta();
+    // Etapa 4: reenviar a MESMA proposta enquanto PENDENTE devolve a mesma ação (idempotência);
+    // por isso a segunda ação deste teste agora difere na quantidade.
+    expect(await proposta()).toMatchObject({ id: a.id, reaproveitada: true });
+    const b = await proposta(7);
 
     const pendentes = await api(token).get("/api/agentes/acoes?status=PENDENTE");
     expect(pendentes.body.map((x) => x.id).sort((x, y) => x - y)).toEqual([a.id, b.id]);

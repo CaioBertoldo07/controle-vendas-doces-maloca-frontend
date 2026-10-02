@@ -489,3 +489,36 @@ export async function vendasDiariasPorSabor({ dataInicio, dataFim } = {}) {
     vendasComDataImplausivel: Number(implausiveis[0].n),
   };
 }
+
+/**
+ * Ocasiões de compra por cliente até dataFim (inclusive): uma linha por
+ * cliente e DIA civil com venda (várias vendas no mesmo dia = uma ocasião),
+ * agregadas no banco (Etapa 4, Agente de Vendas: recorrência). Só ids e
+ * agregados; datas implausíveis (< DATA_MINIMA_PLAUSIVEL) ficam de fora.
+ */
+export async function comprasPorClienteDia({ dataFim } = {}) {
+  const { fimExclusivo } = intervaloEntreDatas(dataFim, dataFim);
+  const [fim, piso] = [datetimeSql(fimExclusivo), `${DATA_MINIMA_PLAUSIVEL} 00:00:00`];
+  const linhas = await prisma.$queryRaw`
+    SELECT v.clienteId AS clienteId, DATE_FORMAT(v.data, '%Y-%m-%d') AS dia, COUNT(*) AS vendas, SUM(v.quantidade) AS unidades
+    FROM vendas v
+    WHERE v.data >= ${piso} AND v.data < ${fim}
+    GROUP BY v.clienteId, dia
+    ORDER BY v.clienteId, dia`;
+  return linhas.map((l) => ({ clienteId: Number(l.clienteId), dia: l.dia, vendas: Number(l.vendas), unidades: Number(l.unidades) }));
+}
+
+/**
+ * Unidades por cliente e sabor entre dois dias civis (inclusive), agregadas no
+ * banco (Etapa 4: exposição de clientes por sabor). Só ids e agregados.
+ */
+export async function unidadesPorClienteSabor({ dataInicio, dataFim } = {}) {
+  const { inicio, fimExclusivo } = intervaloEntreDatas(dataInicio, dataFim);
+  const linhas = await prisma.$queryRaw`
+    SELECT v.clienteId AS clienteId, vs.saborId AS saborId, SUM(vs.quantidade) AS unidades
+    FROM venda_sabores vs JOIN vendas v ON v.id = vs.vendaId
+    WHERE v.data >= ${datetimeSql(inicio)} AND v.data < ${datetimeSql(fimExclusivo)}
+    GROUP BY v.clienteId, vs.saborId
+    ORDER BY v.clienteId, vs.saborId`;
+  return linhas.map((l) => ({ clienteId: Number(l.clienteId), saborId: Number(l.saborId), unidades: Number(l.unidades) }));
+}

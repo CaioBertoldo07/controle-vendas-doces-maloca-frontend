@@ -9,7 +9,7 @@ import { definirTool } from "./definirTool.js";
 export const proporAcao = definirTool({
   nome: "proporAcao",
   descricao:
-    "Propõe uma ação para o gestor aprovar (não executa nada). Tipos: REGISTRAR_VENDA {clienteId, sabores:[{saborId, quantidade}], valor, desconto?, data?, pago?}, REGISTRAR_PRODUCAO {sabores, data?, observacao?}, MARCAR_VENDA_PAGA {vendaId, dataPagamento?}. Clientes, sabores e vendas sempre por id.",
+    "Propõe uma ação para o gestor aprovar (não executa nada; reenviar a mesma proposta enquanto ela estiver PENDENTE devolve a mesma ação). Tipos: REGISTRAR_VENDA {clienteId, sabores:[{saborId, quantidade}], valor, desconto?, data?, pago?}, REGISTRAR_PRODUCAO {sabores, data?, observacao?}, MARCAR_VENDA_PAGA {vendaId, dataPagamento?}. Clientes, sabores e vendas sempre por id.",
   escrita: true,
   entrada: z
     .object({
@@ -26,6 +26,6 @@ export const proporAcao = definirTool({
       criadaPorAgente: contexto.agente,
       execucaoId: contexto.execucaoId,
     });
-    return { acaoId: acao.id, tipo: acao.tipo, status: acao.status };
+    return { acaoId: acao.id, tipo: acao.tipo, status: acao.status, reaproveitada: acao.reaproveitada };
   },
 });

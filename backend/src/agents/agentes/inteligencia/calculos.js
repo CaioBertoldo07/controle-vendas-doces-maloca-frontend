@@ -8,7 +8,9 @@
 // Semana: domingo a sábado no calendário de Manaus (a mesma de
 // intervaloDaSemana, Etapa 0.5). A semana que contém a data de referência é
 // sempre PARCIAL e fica fora das médias, mesmo que a referência seja um sábado.
-import { deslocarDiaISO, diaDaSemanaISO, inicioDaSemanaISO } from "../../../lib/periodos.js";
+import { diaDaSemanaISO, inicioDaSemanaISO, semanasCompletas } from "../../../lib/periodos.js";
+import { indicadoresVendas } from "../../comum/indicadoresVendas.js";
+import { INICIO_CONTROLE_PAGAMENTO } from "../../contratos/marcosDados.js";
 
 /** Parâmetros (todos explícitos, documentados e testados nas fronteiras). */
 export const PARAMETROS = Object.freeze({
@@ -30,7 +32,7 @@ export const PARAMETROS = Object.freeze({
   /** Unidades somadas nas duas janelas abaixo das quais a variação não vira tendência (evita "+100%" de 1 → 2). */
   VOLUME_MINIMO_TENDENCIA: 20,
   /** Início do controle real de pagamento (Etapa 0.2): antes disso o status "pago" é de um backfill. */
-  INICIO_CONTROLE_PAGAMENTO: "2026-08-14",
+  INICIO_CONTROLE_PAGAMENTO,
 });
 
 export const DIAS_SEMANA = Object.freeze(["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"]);
@@ -42,17 +44,10 @@ export const arred = (x, casas = 2) => Math.round(x * 10 ** casas) / 10 ** casas
 
 /**
  * As `n` semanas completas anteriores à semana da data de referência (da mais
- * antiga para a mais recente) e a semana parcial [domingo, referência].
+ * antiga para a mais recente) e a semana parcial [domingo, referência]. Desde a
+ * Etapa 4 é a janela canônica compartilhada (lib/periodos.semanasCompletas).
  */
-export function delimitarSemanas(dataReferencia, n) {
-  const inicioAtual = inicioDaSemanaISO(dataReferencia);
-  const semanas = [];
-  for (let i = n; i >= 1; i--) {
-    const inicio = deslocarDiaISO(inicioAtual, -7 * i);
-    semanas.push({ inicio, fim: deslocarDiaISO(inicio, 6) });
-  }
-  return { semanas, parcial: { inicio: inicioAtual, fim: dataReferencia } };
-}
+export const delimitarSemanas = semanasCompletas;
 
 /** As últimas `n` semanas de uma lista e as `n` imediatamente anteriores. */
 export const dividirJanelas = (semanas, n) => ({ anterior: semanas.slice(-2 * n, -n), recente: semanas.slice(-n) });
@@ -197,32 +192,8 @@ export function diasDeMaiorVenda(perfil) {
 
 // ---------------------------------------------------------------- indicadores
 
-/**
- * Indicadores gerenciais de uma janela a partir de consultarVendasPeriodo.
- * Pagamento: o status de vendas anteriores a 14/08/2026 é sintético (Etapa
- * 0.2) e "pendente" é a situação ATUAL do registro, nunca inadimplência.
- */
-export function indicadoresVendas(v) {
-  const pagamentoConfiavel = v.periodo.dataInicio >= PARAMETROS.INICIO_CONTROLE_PAGAMENTO;
-  return {
-    periodo: v.periodo,
-    quantidadeVendas: v.totalVendas,
-    unidades: v.unidades,
-    faturamentoRegistrado: arred(v.valorTotal, 2),
-    ticketMedio: v.totalVendas > 0 ? arred(v.valorTotal / v.totalVendas, 2) : null,
-    unidadesPorVenda: v.totalVendas > 0 ? arred(v.unidades / v.totalVendas, 2) : null,
-    pagamentos: {
-      vendasPagas: v.vendasPagas,
-      vendasPendentes: v.vendasPendentes,
-      valorPago: arred(v.valorPago, 2),
-      valorPendente: arred(v.valorPendente, 2),
-      confiabilidade: pagamentoConfiavel ? "SITUACAO_ATUAL_DO_REGISTRO" : "COM_RESSALVA",
-      observacao: pagamentoConfiavel
-        ? "Pendente = ainda não marcada como paga hoje; não é inadimplência."
-        : "O período começa antes de 14/08/2026: o status de pagamento dessas vendas veio de um backfill (todas marcadas pagas na data da venda) e não reflete comportamento real de pagamento.",
-    },
-  };
-}
+/** Indicadores gerenciais de uma janela (consultarVendasPeriodo); regra compartilhada com o Agente de Vendas. */
+export { indicadoresVendas };
 
 /** Custo AGREGADO de uma janela (por data de lançamento) relativo às vendas da mesma janela. Nunca por sabor. */
 export function indicadoresCustos(c, vendas) {

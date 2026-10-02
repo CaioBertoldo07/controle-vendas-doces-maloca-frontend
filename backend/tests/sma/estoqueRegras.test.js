@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import * as R from "../../src/agents/agentes/estoque/regras.js";
 import { DEMANDA_MEDIA } from "../../src/agents/contratos/demandaMedia.js";
-import { deslocarDiaISO } from "../../src/lib/periodos.js";
+import { semanasCompletas } from "../../src/lib/periodos.js";
 
 const item = (saborId, sabor, produzido, vendido) => ({ saborId, sabor, produzido, vendido, saldo: produzido - vendido });
 const estoque = (...itens) =>
@@ -13,7 +13,10 @@ const estoque = (...itens) =>
     totalSaldo: itens.reduce((s, i) => s + i.saldo, 0),
   });
 const tipos = (alertas) => alertas.map((a) => [a.tipo, a.subtipo ?? null, a.prioridade, a.entidade.nome ?? null]);
-const janela = (dias, sabores) => R.diagnosticarJanela({ dias, dataInicio: "x", dataFim: "y" }, { sabores });
+// Etapa 4: ritmo numa janela canônica só (4 semanas completas), com a demanda da Inteligência quando disponível.
+const JANELA = { dataInicio: "2026-08-30", dataFim: "2026-09-26", semanas: 4, semanaParcialExcluida: { dataInicio: "2026-09-27", dataFim: "2026-09-30" } };
+const ritmoDe = (sabores, demanda = { disponivel: false }) => R.diagnosticarRitmo({ janela: JANELA, fluxos: { sabores }, demanda });
+const demandaDe = (...sabores) => ({ disponivel: true, sabores: sabores.map(([saborId, qualidade, mediaSemanal]) => ({ saborId, qualidade, mediaSemanal })) });
 const fluxo = (saborId, sabor, produzido, vendido) => ({ saborId, sabor, produzido, vendido });
 
 describe("estoque acabado: saldo contábil histórico, nunca estoque físico", () => {
@@ -91,38 +94,61 @@ describe("receitas e MRP: ausência de receita = informação ausente, não cons
     expect(R.diagnosticarReceitas(null).mrp).toMatchObject({ disponivel: false, estado: "INDISPONIVEL_POR_FALHA" });
   });
 
-  it("simulação de MRP só com receita e com volume vendido nos 30 dias (não é previsão)", () => {
-    const ritmo = { janelas: [janela(30, [fluxo(1, "Coco", 40, 30), fluxo(2, "Limão", 10, 25)])] };
+  it("simulação de MRP só com receita e com volume vendido na janela canônica (não é previsão)", () => {
+    const ritmo = ritmoDe([fluxo(1, "Coco", 40, 30), fluxo(2, "Limão", 10, 25)]);
     expect(R.pedidoSimulacaoMRP(R.diagnosticarReceitas([rec(1, "Coco", false)]), ritmo)).toEqual({ executar: false, motivo: "RECEITAS_NAO_CADASTRADAS" });
     expect(R.pedidoSimulacaoMRP(R.diagnosticarReceitas([rec(1, "Coco", true), rec(2, "Limão", false)]), ritmo))
-      .toEqual({ executar: true, sabores: [{ saborId: 1, quantidade: 30 }], base: "VOLUME_VENDIDO_ULTIMOS_30_DIAS" });
+      .toEqual({ executar: true, sabores: [{ saborId: 1, quantidade: 30 }], base: "VOLUME_VENDIDO_NA_JANELA_CANONICA" });
     expect(R.pedidoSimulacaoMRP(R.diagnosticarReceitas([rec(3, "Pistache", true)]), ritmo)).toEqual({ executar: false, motivo: "SEM_VOLUME_DE_REFERENCIA" });
   });
 });
 
-describe("ritmo produção × vendas (janelas de 7 e 30 dias)", () => {
-  const ritmo = (j30, j7 = []) => R.alertasRitmo([janela(7, j7), janela(30, j30)]);
-
+// Etapa 4: as janelas de 7 e 30 dias deram lugar à janela canônica de 4 semanas completas (a mesma da
+// Inteligência). Mesmas fronteiras de antes; a confirmação MEDIA agora vem da demanda SUFICIENTE da Inteligência.
+describe("ritmo canônico produção × vendas (4 semanas completas)", () => {
+  const coco = (produzido, vendido) => [fluxo(1, "Coco", produzido, vendido)];
   it.each([
-    ["vendas abaixo do mínimo (19)", [fluxo(1, "Coco", 10, 19)], [], []],
-    ["razão exatamente 0,9", [fluxo(1, "Coco", 18, 20)], [], []],
-    ["razão 0,8 sem confirmação na janela curta → BAIXA", [fluxo(1, "Coco", 80, 100)], [fluxo(1, "Coco", 5, 4)], [["RITMO_PRODUCAO_ABAIXO_VENDAS", null, "BAIXA", "Coco"]]],
-    ["razão 0,8 confirmada nos 7 dias → MEDIA", [fluxo(1, "Coco", 80, 100)], [fluxo(1, "Coco", 30, 40)], [["RITMO_PRODUCAO_ABAIXO_VENDAS", null, "MEDIA", "Coco"]]],
-    ["razão exatamente 1,5", [fluxo(1, "Coco", 30, 20)], [], []],
-    ["razão 1,55 → acima (BAIXA)", [fluxo(1, "Coco", 31, 20)], [], [["RITMO_PRODUCAO_ACIMA_VENDAS", null, "BAIXA", "Coco"]]],
-    ["produziu 20 e não vendeu → acima", [fluxo(1, "Coco", 20, 0)], [], [["RITMO_PRODUCAO_ACIMA_VENDAS", null, "BAIXA", "Coco"]]],
-    ["produziu 19 e não vendeu → sem alerta", [fluxo(1, "Coco", 19, 0)], [], []],
-  ])("%s", (_, j30, j7, esperado) => {
-    expect(tipos(ritmo(j30, j7))).toEqual(esperado);
+    ["vendas abaixo do mínimo (19)", coco(10, 19), undefined, []],
+    ["razão exatamente 0,9 → alinhada", coco(18, 20), undefined, []],
+    ["razão 0,8 só com fluxo local → BAIXA", coco(80, 100), undefined, [["RITMO_PRODUCAO_ABAIXO_VENDAS", null, "BAIXA", "Coco"]]],
+    ["razão 0,8 com demanda SUFICIENTE da Inteligência → MEDIA", coco(80, 100), demandaDe([1, "SUFICIENTE", 25]), [["RITMO_PRODUCAO_ABAIXO_VENDAS", null, "MEDIA", "Coco"]]],
+    ["razão 0,8 mas sabor com DADOS_INSUFICIENTES → sem conclusão", coco(80, 100), demandaDe([1, "DADOS_INSUFICIENTES", null]), []],
+    ["razão exatamente 1,5", coco(30, 20), undefined, []],
+    ["razão 1,55 → acima (BAIXA)", coco(31, 20), undefined, [["RITMO_PRODUCAO_ACIMA_VENDAS", null, "BAIXA", "Coco"]]],
+    ["produziu 20 e não vendeu → acima", coco(20, 0), undefined, [["RITMO_PRODUCAO_ACIMA_VENDAS", null, "BAIXA", "Coco"]]],
+    ["produziu 19 e não vendeu → sem alerta", coco(19, 0), undefined, []],
+  ])("%s", (_, fluxos, demanda, esperado) => {
+    expect(tipos(R.alertasRitmo(ritmoDe(fluxos, demanda)))).toEqual(esperado);
   });
 
-  it("janela curta e longa terminam na data de referência, inclusive na virada do ano", () => {
-    expect(R.janelasRitmo("2026-01-03", deslocarDiaISO)).toEqual([
-      { dias: 7, dataInicio: "2025-12-28", dataFim: "2026-01-03" },
-      { dias: 30, dataInicio: "2025-12-05", dataFim: "2026-01-03" },
+  it("uma visão só: situação, texto e fonte por sabor; janela canônica na virada do ano; falha → indisponível", () => {
+    const r = ritmoDe([fluxo(1, "Coco", 80, 120), fluxo(2, "Limão", 10, 5)], demandaDe([1, "SUFICIENTE", 30], [2, "SEM_HISTORICO", null]));
+    expect(r).toMatchObject({ disponivel: true, fonteDemanda: "AGENTE_INTELIGENCIA", produzido: 90, vendido: 125 });
+    expect(r.sabores.map((s) => [s.sabor, s.situacao, s.motivo, s.razaoProducaoVendas, s.producaoMediaSemanal, s.demandaMediaSemanal])).toEqual([
+      ["Coco", "PRODUCAO_ABAIXO_DA_DEMANDA", undefined, 0.667, 20, 30], ["Limão", "SEM_CONCLUSAO", "SEM_HISTORICO", 2, 2.5, null],
     ]);
-    expect(janela(30, [fluxo(1, "Coco", 30, 20)]).sabores[0]).toMatchObject({ diferenca: 10, razaoProduzidoVendido: 1.5 });
-    expect(R.diagnosticarJanela({ dias: 7 }, null)).toMatchObject({ disponivel: false, motivo: "FALHA_CONSULTA_FLUXOS" });
+    expect(r.sabores[0].texto).toBe("A demanda média recente de Coco é 30 un./semana (4 semanas completas, 30/08 a 26/09). A produção no mesmo período foi de 20 un./semana, abaixo desse ritmo.");
+    expect(ritmoDe(coco(80, 100)).sabores[0].texto).toBe("Nas 4 semanas completas, 30/08 a 26/09, Coco teve 25 un./semana vendidas e 20 un./semana produzidas: produção abaixo do ritmo de vendas.");
+    expect(semanasCompletas("2026-01-03", 4)).toEqual({
+      semanas: [{ inicio: "2025-11-30", fim: "2025-12-06" }, { inicio: "2025-12-07", fim: "2025-12-13" }, { inicio: "2025-12-14", fim: "2025-12-20" }, { inicio: "2025-12-21", fim: "2025-12-27" }],
+      parcial: { inicio: "2025-12-28", fim: "2026-01-03" },
+    });
+    expect(R.diagnosticarRitmo({ janela: JANELA, fluxos: null, demanda: { disponivel: false } })).toMatchObject({ disponivel: false, motivo: "FALHA_CONSULTA_FLUXOS" });
+    expect(R.saboresComMovimento({ sabores: [fluxo(3, "A", 0, 0), fluxo(2, "B", 1, 0), fluxo(1, "C", 0, 4)] })).toEqual([1, 2]);
+  });
+
+  // Etapa 4: regra de consulta ao Vendas (calibrada na cópia real: sem o filtro de movimento, 7 sabores eram
+  // consultados, 2 deles parados na janela, com exposição zero)
+  it("sabores para exposição: abaixo da demanda OU divergência, sempre com movimento na janela; sem fluxos, só a divergência", () => {
+    const ritmo = ritmoDe([fluxo(1, "Coco", 10, 30), fluxo(2, "Limão", 20, 20), fluxo(3, "Uva", 0, 0)]);
+    const neg = (id, nome) => ({ tipo: "SALDO_NEGATIVO", entidade: { tipo: "SABOR", id, nome }, dados: { saldo: -5 } });
+    const semProducao = { tipo: "DIVERGENCIA_ESTOQUE", subtipo: "VENDA_SEM_PRODUCAO", entidade: { tipo: "SABOR", id: 2, nome: "Limão" }, dados: { saldo: -3 } };
+    expect(R.saboresParaExposicao({ ritmo, alertas: [neg(1, "Coco"), semProducao, neg(9, "Parado")] })).toEqual([
+      { saborId: 1, motivos: ["PRODUCAO_ABAIXO_DA_DEMANDA", "SALDO_HISTORICO_NEGATIVO"] },
+      { saborId: 2, motivos: ["VENDA_SEM_PRODUCAO"] },
+    ]);
+    expect(R.saboresParaExposicao({ ritmo: { disponivel: false }, alertas: [neg(9, "Parado")] })).toEqual([{ saborId: 9, motivos: ["SALDO_HISTORICO_NEGATIVO"] }]);
+    expect(R.saboresParaExposicao({ ritmo: ritmoDe([fluxo(2, "Limão", 20, 20)]), alertas: [] })).toEqual([]);
   });
 });
 
@@ -156,7 +182,7 @@ describe("recomendações por regra", () => {
 
   it("sem divergência, receitas completas e MP sem problema: nenhuma recomendação; ritmo nunca vira recomendação", () => {
     const e = estoque(item(1, "Coco", 50, 40));
-    const alertas = [...R.alertasEstoqueAcabado(e), ...R.alertasRitmo([janela(7, []), janela(30, [fluxo(1, "Coco", 50, 100)])])];
+    const alertas = [...R.alertasEstoqueAcabado(e), ...R.alertasRitmo(ritmoDe([fluxo(1, "Coco", 50, 100)]))];
     expect(alertas.map((a) => a.tipo)).toContain("RITMO_PRODUCAO_ABAIXO_VENDAS");
     expect(R.gerarRecomendacoes({ estoque: e, alertas })).toEqual([]);
   });

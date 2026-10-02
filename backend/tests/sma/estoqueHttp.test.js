@@ -24,7 +24,7 @@ describe("POST /api/agentes/estoque/executar (ANALISAR_ESTOQUE)", () => {
     expect(res.body.saida.qualidade.estoqueAcabado.confiabilidade).toBe("NAO_RECONCILIADO");
 
     const det = await api(token).get(`/api/agentes/execucoes/${res.body.execucaoId}`);
-    expect(det.body.chamadasTool).toHaveLength(5);
+    expect(det.body.chamadasTool).toHaveLength(4); // Etapa 4: ritmo numa janela canônica só (antes 5: janelas de 7 e 30 dias)
     expect(det.body.recomendacoes.map((r) => r.tipo)).toEqual(["CONTAGEM_FISICA", "CADASTRAR_RECEITAS"]);
     expect(det.body.saida.resumo.alertas).toBe(res.body.saida.resumo.alertas);
   });

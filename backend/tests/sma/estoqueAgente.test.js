@@ -62,7 +62,9 @@ describe("modo degradado", () => {
       else if (v && typeof v === "object") for (const [k, x] of Object.entries(v)) { chaves.add(k.toLowerCase()); coletar(x); }
     };
     coletar(r.saida);
-    expect([...chaves].filter((k) => /minim|cobertura|leadtime|prazo|fornecedor|compra|previs|forecast|tendencia/.test(k))).toEqual([]);
+    // Etapa 4: "compra" sozinho saiu da lista: a exposição de clientes (Vendas) traz fatos de compra de clientes
+    // (ex.: clientesComCompraRecente). Continua proibido o que é LISTA DE COMPRAS (sugestão de compra de insumo).
+    expect([...chaves].filter((k) => /minim|cobertura|leadtime|prazo|fornecedor|listadecompra|listacompra|comprasugerida|sugestaocompra|previs|forecast|tendencia/.test(k))).toEqual([]);
     expect(JSON.stringify(r.saida)).not.toContain("estoque físico atual");
   });
 
@@ -87,7 +89,10 @@ describe("modo degradado", () => {
 });
 
 describe("cenário acadêmico controlado (Tradicional × Maracujá, sem receitas)", () => {
-  it("divergência e ritmo abaixo para Tradicional; nada crítico para Maracujá; MRP indisponível", async () => {
+  // Etapa 4 (ritmo canônico): com 1 semana de histórico, Tradicional é DADOS_INSUFICIENTES para a Inteligência e o
+  // ritmo não gera mais conclusão (antes: RITMO_PRODUCAO_ABAIXO_VENDAS pelas janelas de 7/30 dias, que contavam a
+  // venda de 28/09, da semana parcial). A divergência e a contagem física continuam.
+  it("divergência para Tradicional; ritmo sem conclusão (histórico curto); nada crítico para Maracujá; MRP indisponível", async () => {
     const { tradicional, maracuja } = await cenarioAcademico();
     const antes = await contagemDominio();
     const { saida } = await analisar();
@@ -100,12 +105,14 @@ describe("cenário acadêmico controlado (Tradicional × Maracujá, sem receitas
       ["RECEITA_AUSENTE", null, "MEDIA", "Maracujá"],
       ["RECEITA_AUSENTE", null, "MEDIA", "Tradicional"],
       ["MRP_INDISPONIVEL", null, "MEDIA", null],
-      ["RITMO_PRODUCAO_ABAIXO_VENDAS", null, "MEDIA", "Tradicional"],
     ]);
     expect(saida.alertas.filter((a) => a.entidade.id === maracuja.id).map((a) => a.tipo)).toEqual(["RECEITA_AUSENTE"]);
     expect(saida.mrp).toMatchObject({ disponivel: false, estado: "INDISPONIVEL_POR_DADOS", motivo: "RECEITAS_NAO_CADASTRADAS", simulacao: { executada: false } });
-    expect(saida.ritmo.janelas.map((j) => [j.dias, j.dataInicio, j.dataFim, j.produzido, j.vendido])).toEqual([[7, "2026-09-24", REF, 180, 180], [30, "2026-09-01", REF, 180, 180]]);
-    expect(saida.ritmo.janelas[0].sabores.find((s) => s.saborId === tradicional.id)).toMatchObject({ produzido: 80, vendido: 100, diferenca: -20, razaoProduzidoVendido: 0.8 });
+    expect(saida.ritmo).toMatchObject({ natureza: "FLUXO_REGISTRADO_NA_JANELA_CANONICA", fonteDemanda: "AGENTE_INTELIGENCIA", produzido: 180, vendido: 60,
+      janela: { dataInicio: "2026-08-30", dataFim: "2026-09-26", semanas: 4, semanaParcialExcluida: { dataInicio: "2026-09-27", dataFim: REF } } });
+    expect(saida.ritmo.sabores.map((s) => [s.sabor, s.produzido, s.vendido, s.situacao, s.motivo])).toEqual([
+      ["Maracujá", 100, 0, "SEM_CONCLUSAO", "SEM_HISTORICO"], ["Tradicional", 80, 60, "SEM_CONCLUSAO", "DADOS_INSUFICIENTES"],
+    ]);
 
     expect(saida.recomendacoes.map((r) => [r.tipo, r.prioridade, r.operacao])).toEqual([["CONTAGEM_FISICA", "MEDIA", "CRIADA"], ["CADASTRAR_RECEITAS", "MEDIA", "CRIADA"]]);
     const contagem = await prisma.recomendacao.findFirst({ where: { tipo: "CONTAGEM_FISICA" } });
@@ -115,8 +122,13 @@ describe("cenário acadêmico controlado (Tradicional × Maracujá, sem receitas
     expect(await contagemDominio()).toEqual(antes); // nenhuma escrita de domínio, nenhuma ação
     // Etapa 3: histórico de 1 semana → a Inteligência responde sem média (DADOS_INSUFICIENTES / SEM_HISTORICO) e o Estoque não conclui nada com ela
     expect(saida.demanda).toMatchObject({ solicitada: true, disponivel: true });
-    expect(saida.demanda.sabores.map((s) => [s.sabor, s.qualidade, s.situacao, s.mediaSemanal])).toEqual([
-      ["Tradicional", "DADOS_INSUFICIENTES", "SEM_CONCLUSAO", null], ["Maracujá", "SEM_HISTORICO", "SEM_CONCLUSAO", null],
+    expect(saida.demanda.sabores.map((s) => [s.sabor, s.qualidade, s.mediaSemanal])).toEqual([
+      ["Tradicional", "DADOS_INSUFICIENTES", null], ["Maracujá", "SEM_HISTORICO", null],
+    ]);
+    // Etapa 4: a divergência de Tradicional pede contexto de clientes ao Vendas (cliente sem histórico de recompra)
+    expect(saida.clientes).toMatchObject({ solicitada: true, disponivel: true });
+    expect(saida.clientes.sabores.map((s) => [s.sabor, s.motivosConsulta, s.clientesComCompraRecente, s.clientesRecorrentes])).toEqual([
+      ["Tradicional", ["SALDO_HISTORICO_NEGATIVO"], 1, 0],
     ]);
     expect(saida.demanda.divergencias).toEqual([]);
     expect(saida.qualidade.demandaMediaRecente).toMatchObject({ confiabilidade: "DADOS_INSUFICIENTES", saboresComMedia: 0 });
@@ -125,15 +137,17 @@ describe("cenário acadêmico controlado (Tradicional × Maracujá, sem receitas
 });
 
 describe("MRP com receita SINTÉTICA (prova técnica; não é o estado real do negócio)", () => {
-  it("receita completa → MRP DISPONIVEL; simula a reposição dos 30 dias e aponta insumo insuficiente", async () => {
+  // Etapa 4: base = vendido na janela canônica (4 semanas completas); a 2ª venda saiu de 29/09 (semana parcial,
+  // fora da janela) para 22/09, mantendo o volume de 150 e o propósito do teste (insumo insuficiente).
+  it("receita completa → MRP DISPONIVEL; simula a reposição das 4 semanas completas e aponta insumo insuficiente", async () => {
     const { sabor, acucar } = await cenarioReceitaBasica({ estoqueAcucar: 1000 });
     await produzir(sabor.id, 160, "2026-09-10");
     await vender(sabor.id, 90, "2026-09-15");
-    await vender(sabor.id, 60, "2026-09-29");
+    await vender(sabor.id, 60, "2026-09-22");
     const { saida, execucaoId } = await analisar();
 
     expect(saida.mrp).toMatchObject({ disponivel: true, estado: "DISPONIVEL" });
-    expect(saida.mrp.simulacao).toMatchObject({ executada: true, natureza: "SIMULACAO_TECNICA", base: "VOLUME_VENDIDO_ULTIMOS_30_DIAS", sabores: [{ saborId: sabor.id, quantidade: 150 }], podeProduzir: false });
+    expect(saida.mrp.simulacao).toMatchObject({ executada: true, natureza: "SIMULACAO_TECNICA", base: "VOLUME_VENDIDO_NA_JANELA_CANONICA", sabores: [{ saborId: sabor.id, quantidade: 150 }], podeProduzir: false });
     expect(saida.mrp.simulacao.necessidades.find((n) => n.materiaPrimaId === acucar.id).quantidade).toBe(1500);
     expect(saida.mrp.simulacao.aviso).toMatch(/Não é lista de compras/);
     expect(alertas(saida)).toContainEqual(["MATERIA_PRIMA_INSUFICIENTE", null, "MEDIA", null]);
@@ -231,17 +245,22 @@ describe("auditoria da análise", () => {
     const ex = await consultas.buscarExecucao(execucaoId);
     expect(ex).toMatchObject({ agente: "estoque", tipoExecucao: "ANALISAR_ESTOQUE", gatilho: "HTTP", status: "SUCESSO" });
     expect(ex.duracaoMs).toBeGreaterThanOrEqual(0);
+    // Etapa 4: uma consulta de fluxos só, na janela canônica (antes: janelas de 7 e 30 dias)
     expect(ex.chamadasTool.map((c) => [c.tool, c.ok])).toEqual([
       ["consultarEstoqueAcabado", true], ["consultarSaldoMateriasPrimas", true], ["consultarReceitas", true],
-      ["consultarProducaoVendasPeriodo", true], ["consultarProducaoVendasPeriodo", true],
+      ["consultarProducaoVendasPeriodo", true],
     ]);
     expect(ex.chamadasTool[0].saida).toEqual({ sabores: 2, negativos: 1, totalProduzido: 180, totalVendido: 180, totalSaldo: 0 });
-    expect(ex.chamadasTool[3].entrada).toEqual({ dataInicio: "2026-09-24", dataFim: REF });
+    expect(ex.chamadasTool[3].entrada).toEqual({ dataInicio: "2026-08-30", dataFim: "2026-09-26" });
     expect(ex.recomendacoes.map((r) => r.tipo)).toEqual(["CONTAGEM_FISICA", "CADASTRAR_RECEITAS"]);
-    expect(ex.saida.resumo).toMatchObject({ alertas: 6, recomendacoes: 2 });
-    // Etapa 3: cooperação real com a Inteligência (antes: nenhuma mensagem)
-    expect(ex.mensagens.map((m) => [m.agenteDestino, m.tipo, m.status])).toEqual([["inteligencia", "DEMANDA_MEDIA", "RESPONDIDA"]]);
-    expect(ex.filhas.map((f) => [f.agente, f.tipoExecucao, f.status])).toEqual([["inteligencia", "DEMANDA_MEDIA", "SUCESSO"]]);
+    expect(ex.saida.resumo).toMatchObject({ alertas: 5, recomendacoes: 2, cooperacao: { inteligencia: "RESPONDIDA", vendas: "RESPONDIDA" } });
+    // Etapa 3: cooperação real com a Inteligência (antes: nenhuma mensagem); Etapa 4: + Vendas (divergência de Tradicional)
+    expect(ex.mensagens.map((m) => [m.agenteDestino, m.tipo, m.status])).toEqual([
+      ["inteligencia", "DEMANDA_MEDIA", "RESPONDIDA"], ["vendas", "EXPOSICAO_CLIENTES_POR_SABOR", "RESPONDIDA"],
+    ]);
+    expect(ex.filhas.map((f) => [f.agente, f.tipoExecucao, f.status])).toEqual([
+      ["inteligencia", "DEMANDA_MEDIA", "SUCESSO"], ["vendas", "EXPOSICAO_CLIENTES_POR_SABOR", "SUCESSO"],
+    ]);
 
     const rt = runtimeTeste();
     expect((await rt.executarAgente("estoque", { tipo: "DIAGNOSTICO" })).saida.toolsOk).toBe(true);

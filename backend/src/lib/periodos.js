@@ -161,6 +161,30 @@ export function diaDaSemanaISO(diaISO) {
 /** Domingo da semana civil (domingo a sábado, como intervaloDaSemana) que contém o dia. */
 export const inicioDaSemanaISO = (diaISO) => deslocarDiaISO(diaISO, -diaDaSemanaISO(diaISO));
 
+/**
+ * Janela canônica dos agentes (Etapa 4): as `n` semanas completas (domingo a
+ * sábado) anteriores à semana da data de referência, da mais antiga à mais
+ * recente, e a semana parcial [domingo, referência], que fica fora das médias
+ * mesmo quando a referência é um sábado. Estoque, Inteligência e Vendas usam
+ * esta mesma função: a mesma referência dá sempre a mesma janela.
+ */
+export function semanasCompletas(dataReferencia, n) {
+  const inicioAtual = inicioDaSemanaISO(dataReferencia);
+  const semanas = [];
+  for (let i = n; i >= 1; i--) {
+    const inicio = deslocarDiaISO(inicioAtual, -7 * i);
+    semanas.push({ inicio, fim: deslocarDiaISO(inicio, 6) });
+  }
+  return { semanas, parcial: { inicio: inicioAtual, fim: dataReferencia } };
+}
+
+/** Dias civis de diaA até diaB ("AAAA-MM-DD"); negativo se diaB for anterior. */
+export function diasEntre(diaA, diaB) {
+  const [a1, m1, d1] = diaA.split("-").map(Number);
+  const [a2, m2, d2] = diaB.split("-").map(Number);
+  return Math.round((civil(a2, m2, d2).getTime() - civil(a1, m1, d1).getTime()) / 86400000);
+}
+
 /** Ano e mês correntes em Manaus. */
 export function mesAtualCivil() {
   const agora = agoraCivil();

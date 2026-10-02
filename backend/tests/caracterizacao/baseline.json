@@ -1,11 +1,17 @@
 {
   "descricao": "Baseline da suíte de caracterização. Só altere de forma consciente, registrando o motivo em docs/tcc.",
-  "testes": 457,
-  "arquivos": 26,
+  "testes": 511,
+  "arquivos": 29,
   "pendentesPermitidos": 0,
   "definidaEm": "2026-10-02",
-  "motivo": "Etapa 3: +70 testes do Agente de Inteligência e da cooperação Estoque ↔ Inteligência (inteligenciaCalculos 43, inteligenciaAgente 17, cooperacao 8 em tests/sma; +1 arquitetura em tools.test.js; +1 em periodos.test.js). Nenhum teste removido; 4 testes da Etapa 2 ajustados por evolução deliberada (cooperação real e contrato DEMANDA_MEDIA formalizado) (docs/tcc/etapa-3-agente-inteligencia.md)",
+  "motivo": "Etapa 4: +54 testes (vendasRegras 25, vendasAgente 18, cooperacaoTres 8 em tests/sma; +1 em periodos.test.js; +2 em estoqueRegras: 1 caso no ritmo canônico e a regra de consulta ao Vendas). Nenhum teste removido; testes das Etapas 1–3 ajustados deliberadamente pela unificação do ritmo do Estoque (janela canônica de 4 semanas completas), pela consulta ao Vendas e pela idempotência das propostas (docs/tcc/etapa-4-agente-vendas.md)",
   "historico": [
+    {
+      "testes": 457,
+      "arquivos": 26,
+      "definidaEm": "2026-10-02",
+      "motivo": "Etapa 3: +70 testes do Agente de Inteligência e da cooperação Estoque ↔ Inteligência (docs/tcc/etapa-3-agente-inteligencia.md)"
+    },
     {
       "testes": 387,
       "arquivos": 23,

@@ -9,18 +9,21 @@
 
 /** Limiares (todos explícitos e testados). */
 export const LIMITES = Object.freeze({
-  /** Janelas de comparação produção × vendas (dias, terminando na data de referência). */
-  JANELAS_RITMO: Object.freeze([7, 30]),
-  /** Vendas mínimas na janela de 30 dias para avaliar o ritmo de um sabor (evita ruído de baixo giro). */
-  RITMO_VENDAS_MINIMAS_30: 20,
-  /** Vendas mínimas na janela de 7 dias para a janela curta confirmar o desvio. */
-  RITMO_VENDAS_MINIMAS_7: 5,
+  /**
+   * Janela CANÔNICA do ritmo (Etapa 4): as 4 semanas completas anteriores à
+   * semana da referência (lib/periodos.semanasCompletas), a MESMA da demanda
+   * média da Inteligência e da exposição de clientes de Vendas. Substituiu as
+   * janelas de 7 e 30 dias da Etapa 2, que comparavam períodos diferentes.
+   */
+  JANELA_RITMO_SEMANAS: 4,
+  /** Vendas mínimas na janela canônica para concluir "produção abaixo" ou "alinhada" (evita ruído de baixo giro). */
+  RITMO_VENDAS_MINIMAS: 20,
   /** Produção abaixo de 90% das vendas: os 10% absorvem defasagem entre o dia em que se produz e o dia em que se vende. */
   RITMO_RAZAO_ABAIXO: 0.9,
   /** Produção acima de 150% das vendas: excesso relevante para um produto de giro rápido. */
   RITMO_RAZAO_ACIMA: 1.5,
-  /** Produção mínima na janela de 30 dias para apontar produção acima das vendas. */
-  RITMO_PRODUCAO_MINIMA_30: 20,
+  /** Produção mínima na janela canônica para apontar produção acima das vendas. */
+  RITMO_PRODUCAO_MINIMA: 20,
   /** Saldo histórico positivo "alto": ≥ 50 unidades E ≥ 20% de tudo o que foi produzido. */
   SALDO_ACUMULADO_ABSOLUTO: 50,
   SALDO_ACUMULADO_PERCENTUAL: 0.2,
@@ -196,113 +199,99 @@ export function alertasReceitas(diag) {
 }
 
 /**
- * Pedido da simulação técnica de MRP: repor o volume VENDIDO nos últimos
- * 30 dias dos sabores com receita (ritmo recente, não previsão). Sem receita
- * ou sem volume, não há simulação.
+ * Pedido da simulação técnica de MRP: repor o volume VENDIDO na janela
+ * canônica (4 semanas completas) dos sabores com receita (ritmo recente, não
+ * previsão). Sem receita ou sem volume, não há simulação.
  */
 export function pedidoSimulacaoMRP(receitas, ritmo) {
   if (!receitas.mrp.disponivel) return { executar: false, motivo: receitas.mrp.motivo };
-  const j30 = ritmo.janelas.find((j) => j.dias === 30);
-  if (!j30?.disponivel) return { executar: false, motivo: "SEM_DADOS_DE_VENDAS_NA_JANELA" };
+  if (!ritmo.disponivel) return { executar: false, motivo: "SEM_DADOS_DE_VENDAS_NA_JANELA" };
   const ids = new Set(receitas.comReceita.map((s) => s.saborId));
-  const sabores = j30.sabores.filter((s) => ids.has(s.saborId) && s.vendido > 0).map((s) => ({ saborId: s.saborId, quantidade: s.vendido }));
+  const sabores = ritmo.sabores.filter((s) => ids.has(s.saborId) && s.vendido > 0).map((s) => ({ saborId: s.saborId, quantidade: s.vendido }));
   if (sabores.length === 0) return { executar: false, motivo: "SEM_VOLUME_DE_REFERENCIA" };
-  return { executar: true, sabores, base: "VOLUME_VENDIDO_ULTIMOS_30_DIAS" };
+  return { executar: true, sabores, base: "VOLUME_VENDIDO_NA_JANELA_CANONICA" };
 }
 
 export function alertasSimulacaoMRP(simulacao) {
   if (!simulacao?.executada || simulacao.faltantes.length === 0) return [];
   return [alerta(ALERTA.MATERIA_PRIMA_INSUFICIENTE, "MEDIA", SISTEMA,
-    "Na simulação técnica, o saldo calculado de matéria-prima não cobre a reposição do volume vendido nos últimos 30 dias dos sabores com receita.",
+    "Na simulação técnica, o saldo calculado de matéria-prima não cobre a reposição do volume vendido nas 4 semanas completas recentes dos sabores com receita.",
     { faltantes: simulacao.faltantes, base: simulacao.base })];
 }
 
-// ---------------------------------------------------------------- ritmo produção × vendas
-
-/** Janelas [ref − (dias − 1), ref], em dias civis de Manaus. Recebe `deslocar(diaISO, n)`. */
-export const janelasRitmo = (dataReferencia, deslocar) =>
-  LIMITES.JANELAS_RITMO.map((dias) => ({ dias, dataInicio: deslocar(dataReferencia, -(dias - 1)), dataFim: dataReferencia }));
-
-/** Janela consultada → produzido, vendido, diferença e razão por sabor. Não é previsão. */
-export function diagnosticarJanela(janela, dados) {
-  if (!dados) return { ...janela, disponivel: false, motivo: "FALHA_CONSULTA_FLUXOS" };
-  const sabores = dados.sabores.map((s) => ({
-    ...s,
-    diferenca: s.produzido - s.vendido,
-    razaoProduzidoVendido: s.vendido > 0 ? Number((s.produzido / s.vendido).toFixed(3)) : null,
-  }));
-  const produzido = sabores.reduce((t, s) => t + s.produzido, 0);
-  const vendido = sabores.reduce((t, s) => t + s.vendido, 0);
-  return { ...janela, disponivel: true, semMovimento: sabores.length === 0, produzido, vendido, sabores };
-}
-
-export function alertasRitmo(janelas) {
-  const j30 = janelas.find((j) => j.dias === 30);
-  const j7 = janelas.find((j) => j.dias === 7);
-  if (!j30?.disponivel) return [];
-  const curta = new Map((j7?.disponivel ? j7.sabores : []).map((s) => [s.saborId, s]));
-  const alertas = [];
-  for (const s of j30.sabores) {
-    if (s.vendido >= LIMITES.RITMO_VENDAS_MINIMAS_30 && s.produzido / s.vendido < LIMITES.RITMO_RAZAO_ABAIXO) {
-      const c = curta.get(s.saborId);
-      const confirmada = Boolean(c) && c.vendido >= LIMITES.RITMO_VENDAS_MINIMAS_7 && c.produzido / c.vendido < LIMITES.RITMO_RAZAO_ABAIXO;
-      alertas.push(alerta(ALERTA.RITMO_PRODUCAO_ABAIXO_VENDAS, confirmada ? "MEDIA" : "BAIXA", sabor(s),
-        `Nos últimos 30 dias foram produzidas ${s.produzido} e vendidas ${s.vendido} unidade(s) de ${s.sabor}: a produção ficou abaixo do ritmo de vendas${confirmada ? ", também nos últimos 7 dias" : ""}.`,
-        { janela30: { produzido: s.produzido, vendido: s.vendido }, ...(c && { janela7: { produzido: c.produzido, vendido: c.vendido } }), confirmadaNaJanelaCurta: confirmada }));
-    } else if (s.produzido >= LIMITES.RITMO_PRODUCAO_MINIMA_30 && (s.vendido === 0 || s.produzido / s.vendido > LIMITES.RITMO_RAZAO_ACIMA)) {
-      alertas.push(alerta(ALERTA.RITMO_PRODUCAO_ACIMA_VENDAS, "BAIXA", sabor(s),
-        `Nos últimos 30 dias foram produzidas ${s.produzido} e vendidas ${s.vendido} unidade(s) de ${s.sabor}: a produção ficou bem acima do ritmo de vendas.`,
-        { janela30: { produzido: s.produzido, vendido: s.vendido } }));
-    }
-  }
-  return alertas;
-}
-
-// ---------------------------------------------------------------- demanda média recente (Etapa 3)
+// ---------------------------------------------------------------- ritmo canônico produção × vendas (Etapa 4)
 //
-// A demanda vem do Agente de Inteligência (mensagem DEMANDA_MEDIA). Ela
-// ENRIQUECE o diagnóstico: compara a produção das mesmas semanas com a demanda
-// e dá escala às divergências. Não gera alerta novo nem quantidade a produzir
-// (estoque não reconciliado, sem estoque mínimo, sem receitas reais).
-
-/** Sabores a consultar: os que tiveram produção ou venda na janela de 30 dias. */
-export function saboresParaDemanda(ritmo) {
-  const j30 = ritmo.janelas.find((j) => j.dias === 30);
-  if (!j30?.disponivel) return [];
-  return j30.sabores.filter((s) => s.produzido > 0 || s.vendido > 0).map((s) => s.saborId).sort((a, b) => a - b);
-}
+// Uma visão só: produção e vendas das MESMAS 4 semanas completas (janela
+// canônica, igual à da demanda média da Inteligência). Quando a Inteligência
+// responde, a qualidade da amostra dela decide se há conclusão (sabor novo →
+// SEM_CONCLUSAO) e confirma o alerta (MEDIA). Sem ela, o Estoque usa só os
+// próprios fluxos da janela (alerta BAIXA). Não é previsão.
 
 const fmt = (n) => n.toLocaleString("pt-BR", { maximumFractionDigits: 1 });
 const dm = (d) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
+const SENTIDO_DEMANDA = { PRODUCAO_ABAIXO_DA_DEMANDA: "abaixo desse ritmo", PRODUCAO_ACIMA_DA_DEMANDA: "acima desse ritmo", ALINHADA: "alinhada a esse ritmo" };
+const SENTIDO_VENDAS = { PRODUCAO_ABAIXO_DA_DEMANDA: "abaixo do ritmo de vendas", PRODUCAO_ACIMA_DA_DEMANDA: "acima do ritmo de vendas", ALINHADA: "alinhada ao ritmo de vendas" };
+
+/** Sabores com produção ou venda na janela canônica (os que justificam pedir a demanda). */
+export const saboresComMovimento = (fluxos) =>
+  (fluxos?.sabores ?? []).filter((s) => s.produzido > 0 || s.vendido > 0).map((s) => s.saborId).sort((a, b) => a - b);
 
 /**
- * Produção média semanal (mesmas semanas da demanda) × demanda média recente,
- * por sabor. Mesmos limiares da comparação de ritmo (0,9 e 1,5). Sem amostra
- * suficiente ou sem venda na janela: SEM_CONCLUSAO.
+ * Ritmo canônico por sabor. `janela` = { dataInicio, dataFim, semanas,
+ * semanaParcialExcluida }; `fluxos` = consultarProducaoVendasPeriodo na janela
+ * (ou null); `demanda` = seção de demanda (disponível ou não).
  */
-export function compararProducaoDemanda(resposta, producao) {
-  const { janelaSemanas: n, periodo } = resposta.metodologia;
-  const produzido = new Map((producao?.sabores ?? []).map((s) => [s.saborId, s.produzido]));
-  const janela = `${n} semanas completas, ${dm(periodo.dataInicio)} a ${dm(periodo.dataFim)}`;
-  return resposta.sabores.map((s) => {
-    const base = { saborId: s.saborId, sabor: s.sabor, qualidade: s.qualidade, mediaSemanal: s.mediaSemanal };
-    if (s.qualidade !== "SUFICIENTE") {
-      return { ...base, situacao: "SEM_CONCLUSAO", motivo: s.qualidade,
-        texto: `${s.sabor} não tem ${n} semanas completas de histórico de vendas: a demanda média não é usada para conclusões.` };
-    }
-    if (!producao) return { ...base, situacao: "SEM_CONCLUSAO", motivo: "FALHA_CONSULTA_PRODUCAO", texto: `A demanda média recente de ${s.sabor} é ${fmt(s.mediaSemanal)} un./semana (${janela}).` };
-    const prodSemanal = Number(((produzido.get(s.saborId) ?? 0) / n).toFixed(2));
-    const textoDemanda = `A demanda média recente de ${s.sabor} é ${fmt(s.mediaSemanal)} un./semana (${janela}).`;
-    if (s.mediaSemanal === 0) {
-      return { ...base, producaoMediaSemanal: prodSemanal, situacao: "SEM_CONCLUSAO", motivo: "SEM_VENDAS_NA_JANELA", texto: `${s.sabor} não teve vendas nas ${janela}.` };
-    }
-    const razao = Number((prodSemanal / s.mediaSemanal).toFixed(3));
-    const situacao = razao < LIMITES.RITMO_RAZAO_ABAIXO ? "PRODUCAO_ABAIXO_DA_DEMANDA" : razao > LIMITES.RITMO_RAZAO_ACIMA ? "PRODUCAO_ACIMA_DA_DEMANDA" : "ALINHADA";
-    const sentido = { PRODUCAO_ABAIXO_DA_DEMANDA: "abaixo desse ritmo", PRODUCAO_ACIMA_DA_DEMANDA: "acima desse ritmo", ALINHADA: "alinhada a esse ritmo" }[situacao];
-    return {
-      ...base, producaoMediaSemanal: prodSemanal, razaoProducaoDemanda: razao, situacao,
-      texto: `${textoDemanda} A produção no mesmo período foi de ${fmt(prodSemanal)} un./semana, ${sentido}.`,
+export function diagnosticarRitmo({ janela, fluxos, demanda }) {
+  if (!fluxos) return { disponivel: false, motivo: "FALHA_CONSULTA_FLUXOS", janela };
+  const n = janela.semanas;
+  const comDemanda = Boolean(demanda?.disponivel);
+  const daDemanda = new Map((comDemanda ? demanda.sabores : []).map((s) => [s.saborId, s]));
+  const periodo = `${n} semanas completas, ${dm(janela.dataInicio)} a ${dm(janela.dataFim)}`;
+  const sabores = fluxos.sabores.map((f) => {
+    const d = daDemanda.get(f.saborId);
+    const base = {
+      saborId: f.saborId, sabor: f.sabor, produzido: f.produzido, vendido: f.vendido, diferenca: f.produzido - f.vendido,
+      producaoMediaSemanal: Number((f.produzido / n).toFixed(2)), vendaMediaSemanal: Number((f.vendido / n).toFixed(2)),
+      demandaMediaSemanal: d?.mediaSemanal ?? null, qualidadeDemanda: comDemanda ? (d?.qualidade ?? "NAO_INFORMADA") : null,
+      razaoProducaoVendas: f.vendido > 0 ? Number((f.produzido / f.vendido).toFixed(3)) : null,
     };
+    if (comDemanda && base.qualidadeDemanda !== "SUFICIENTE") {
+      return { ...base, situacao: "SEM_CONCLUSAO", motivo: base.qualidadeDemanda,
+        texto: `${f.sabor} não tem ${n} semanas completas de histórico de vendas: o ritmo não é usado para conclusões.` };
+    }
+    const abaixo = f.vendido >= LIMITES.RITMO_VENDAS_MINIMAS && f.produzido / f.vendido < LIMITES.RITMO_RAZAO_ABAIXO;
+    const acima = f.produzido >= LIMITES.RITMO_PRODUCAO_MINIMA && (f.vendido === 0 || f.produzido / f.vendido > LIMITES.RITMO_RAZAO_ACIMA);
+    const situacao = abaixo ? "PRODUCAO_ABAIXO_DA_DEMANDA" : acima ? "PRODUCAO_ACIMA_DA_DEMANDA" : f.vendido >= LIMITES.RITMO_VENDAS_MINIMAS ? "ALINHADA" : "SEM_CONCLUSAO";
+    if (situacao === "SEM_CONCLUSAO") {
+      return { ...base, situacao, motivo: "VOLUME_BAIXO", texto: `${f.sabor} vendeu ${f.vendido} unidade(s) nas ${periodo}: volume baixo para concluir sobre o ritmo.` };
+    }
+    const texto = comDemanda
+      ? `A demanda média recente de ${f.sabor} é ${fmt(base.demandaMediaSemanal)} un./semana (${periodo}). A produção no mesmo período foi de ${fmt(base.producaoMediaSemanal)} un./semana, ${SENTIDO_DEMANDA[situacao]}.`
+      : `Nas ${periodo}, ${f.sabor} teve ${fmt(base.vendaMediaSemanal)} un./semana vendidas e ${fmt(base.producaoMediaSemanal)} un./semana produzidas: produção ${SENTIDO_VENDAS[situacao]}.`;
+    return { ...base, situacao, texto };
+  });
+  return {
+    disponivel: true,
+    natureza: "FLUXO_REGISTRADO_NA_JANELA_CANONICA",
+    janela,
+    fonteDemanda: comDemanda ? "AGENTE_INTELIGENCIA" : "FLUXO_LOCAL",
+    observacao: "Produção e vendas das mesmas semanas completas; comparação de ritmo recente, não previsão.",
+    produzido: fluxos.sabores.reduce((t, s) => t + s.produzido, 0),
+    vendido: fluxos.sabores.reduce((t, s) => t + s.vendido, 0),
+    semMovimento: fluxos.sabores.length === 0,
+    sabores,
+  };
+}
+
+/** Alertas de ritmo a partir da visão canônica (uma fonte só: sem alertas contraditórios). */
+export function alertasRitmo(ritmo) {
+  if (!ritmo.disponivel) return [];
+  const confirmado = ritmo.fonteDemanda === "AGENTE_INTELIGENCIA";
+  const dados = (s) => ({ janela: { dataInicio: ritmo.janela.dataInicio, dataFim: ritmo.janela.dataFim }, produzido: s.produzido, vendido: s.vendido, razaoProducaoVendas: s.razaoProducaoVendas, fonteDemanda: ritmo.fonteDemanda });
+  return ritmo.sabores.flatMap((s) => {
+    if (s.situacao === "PRODUCAO_ABAIXO_DA_DEMANDA") return [alerta(ALERTA.RITMO_PRODUCAO_ABAIXO_VENDAS, confirmado ? "MEDIA" : "BAIXA", sabor(s), s.texto, dados(s))];
+    if (s.situacao === "PRODUCAO_ACIMA_DA_DEMANDA") return [alerta(ALERTA.RITMO_PRODUCAO_ACIMA_VENDAS, "BAIXA", sabor(s), s.texto, dados(s))];
+    return [];
   });
 }
 
@@ -318,8 +307,8 @@ export function qualidadeDemanda(demanda) {
 }
 
 /** Divergência histórica (saldo negativo) expressa em semanas de demanda média recente: escala, não estoque. */
-export function contextualizarDivergencias(alertas, comparacao) {
-  const demanda = new Map(comparacao.filter((c) => c.qualidade === "SUFICIENTE" && c.mediaSemanal > 0).map((c) => [c.saborId, c.mediaSemanal]));
+export function contextualizarDivergencias(alertas, demandaSabores) {
+  const demanda = new Map(demandaSabores.filter((c) => c.qualidade === "SUFICIENTE" && c.mediaSemanal > 0).map((c) => [c.saborId, c.mediaSemanal]));
   return alertas
     .filter((a) => (a.tipo === ALERTA.SALDO_NEGATIVO || a.subtipo === "VENDA_SEM_PRODUCAO") && demanda.has(a.entidade.id))
     .map((a) => {
@@ -331,6 +320,49 @@ export function contextualizarDivergencias(alertas, comparacao) {
       };
     });
 }
+
+// ---------------------------------------------------------------- exposição de clientes (Etapa 4, Agente de Vendas)
+
+/**
+ * Sabores que MERECEM contexto de clientes (regra de consulta ao Vendas):
+ *   - produção abaixo da demanda/vendas na janela canônica, ou
+ *   - divergência histórica (SALDO_NEGATIVO ou VENDA_SEM_PRODUCAO),
+ * e, nos dois casos, com produção ou venda NA JANELA canônica: sabor parado
+ * (ex.: descontinuado com saldo antigo negativo) não tem cliente recente a
+ * contextualizar. A divergência é local: mesmo sem a Inteligência há base para
+ * consultar. Sem os fluxos da janela, vale só a divergência.
+ */
+export function saboresParaExposicao({ ritmo, alertas }) {
+  const comMovimento = ritmo.disponivel ? new Set(ritmo.sabores.filter((s) => s.produzido > 0 || s.vendido > 0).map((s) => s.saborId)) : null;
+  const motivos = new Map();
+  const add = (id, m) => motivos.set(id, [...(motivos.get(id) ?? []), m]);
+  if (ritmo.disponivel) for (const s of ritmo.sabores) if (s.situacao === "PRODUCAO_ABAIXO_DA_DEMANDA") add(s.saborId, "PRODUCAO_ABAIXO_DA_DEMANDA");
+  for (const a of alertas) {
+    if (a.tipo === ALERTA.SALDO_NEGATIVO) add(a.entidade.id, "SALDO_HISTORICO_NEGATIVO");
+    else if (a.subtipo === "VENDA_SEM_PRODUCAO") add(a.entidade.id, "VENDA_SEM_PRODUCAO");
+  }
+  return [...motivos.entries()]
+    .filter(([saborId]) => !comMovimento || comMovimento.has(saborId))
+    .map(([saborId, m]) => ({ saborId, motivos: m }))
+    .sort((a, b) => a.saborId - b.saborId);
+}
+
+/** Texto de contexto por sabor a partir da resposta agregada de Vendas (fatos observados, sem previsão). */
+export function contextualizarExposicao(resposta, motivos) {
+  const porId = new Map(motivos.map((m) => [m.saborId, m.motivos]));
+  const { janelaSemanas: n, periodo } = resposta.metodologia;
+  return resposta.sabores.map((s) => ({
+    ...s,
+    motivosConsulta: porId.get(s.saborId) ?? [],
+    texto: s.qualidade === "SEM_VENDAS_NA_JANELA"
+      ? `${s.sabor} não teve vendas nas ${n} semanas completas (${dm(periodo.dataInicio)} a ${dm(periodo.dataFim)}).`
+      : `${s.sabor} teve compras de ${s.clientesComCompraRecente} cliente(s) nas ${n} semanas completas (${dm(periodo.dataInicio)} a ${dm(periodo.dataFim)}); ${s.clientesRecorrentes} deles com histórico de recompra, responsáveis por ${fmt(s.participacaoClientesRecorrentes)}% das unidades do sabor.`,
+  }));
+}
+
+/** Qualidade da seção de clientes. */
+export const qualidadeExposicao = (clientes) =>
+  clientes.disponivel ? { confiabilidade: "UTILIZAVEL", sabores: clientes.sabores.length } : { confiabilidade: clientes.solicitada ? "INDISPONIVEL" : "NAO_SOLICITADA", motivo: clientes.motivo };
 
 // ---------------------------------------------------------------- recomendações
 
@@ -415,8 +447,8 @@ export function qualidadeDosDados({ estoque, materias, receitas, ritmo }) {
     materiasPrimas: { confiabilidade: materias.confiabilidade, ...(materias.motivo && { motivo: materias.motivo }), quantidade: materias.itens.length },
     receitas: { confiabilidade: receitas.confiabilidade, comReceita: receitas.comReceita.length, semReceita: receitas.semReceita.length },
     mrp: receitas.mrp,
-    fluxosProducaoVendas: ritmo.janelas.every((j) => j.disponivel)
-      ? { confiabilidade: ritmo.janelas.some((j) => !j.semMovimento) ? "UTILIZAVEL" : "SEM_DADOS_NO_PERIODO", observacao: "Fluxos registrados no período; não dependem do saldo histórico." }
+    fluxosProducaoVendas: ritmo.disponivel
+      ? { confiabilidade: ritmo.semMovimento ? "SEM_DADOS_NO_PERIODO" : "UTILIZAVEL", janela: ritmo.janela, observacao: "Fluxos registrados nas semanas completas da janela canônica; não dependem do saldo histórico." }
       : { confiabilidade: "INDISPONIVEL", motivo: "FALHA_CONSULTA_FLUXOS" },
   };
 }

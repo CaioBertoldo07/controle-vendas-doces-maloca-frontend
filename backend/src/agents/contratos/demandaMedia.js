@@ -21,7 +21,7 @@ const existe = (d) => {
   const data = lerDataCivil(d);
   return Number.isFinite(data.getTime()) && diaCivilISO(data) === d;
 };
-const diaExistente = diaCivil.refine(existe, "dia inexistente no calendário");
+export const diaExistente = diaCivil.refine(existe, "dia inexistente no calendário");
 const periodo = z.object({ dataInicio: diaCivil, dataFim: diaCivil }).strict();
 const nulo = (s) => s.nullable();
 

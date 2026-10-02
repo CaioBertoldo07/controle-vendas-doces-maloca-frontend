@@ -24,7 +24,17 @@ const validarPayload = (tipo, payload) => {
   return r.data;
 };
 
-/** Cria a proposta (status PENDENTE). Não executa nada. */
+/**
+ * Cria a proposta (status PENDENTE). Não executa nada.
+ *
+ * Idempotência (Etapa 4), sem migration: se já existe uma ação PENDENTE do
+ * mesmo tipo com o MESMO payload validado (igualdade de JSON no banco), ela é
+ * devolvida com `reaproveitada: true` em vez de criar outra. Cobre o reenvio
+ * acidental da mesma intenção. Depois de aprovada, rejeitada ou executada, a
+ * mesma proposta volta a criar uma ação nova (pode ser uma venda legítima
+ * repetida). Duas propostas simultâneas idênticas ainda podem duplicar
+ * (busca e criação não são atômicas; mesmo limite das recomendações).
+ */
 export async function proporAcao({ tipo, payload, descricao, criadaPorAgente, execucaoId = null }) {
   if (!TIPOS_ACAO.includes(tipo)) {
     throw new ErroDominio(400, { error: `Tipo de ação não permitido: "${tipo}"`, tipo: "INVALIDO", permitidos: TIPOS_ACAO });
@@ -34,9 +44,13 @@ export async function proporAcao({ tipo, payload, descricao, criadaPorAgente, ex
   const dados = validarPayload(tipo, payload);
   await CONTRATOS[tipo].verificar(dados);
 
-  return prisma.acaoProposta.create({
+  const igual = await prisma.acaoProposta.findFirst({ where: { tipo, status: "PENDENTE", payload: { equals: dados } }, orderBy: { id: "asc" } });
+  if (igual) return { ...igual, reaproveitada: true };
+
+  const criada = await prisma.acaoProposta.create({
     data: { tipo, payload: dados, descricao: descricao.trim().slice(0, 2000), status: "PENDENTE", criadaPorAgente, execucaoId },
   });
+  return { ...criada, reaproveitada: false };
 }
 
 /** Id de ação válido (inteiro positivo) ou 404. */

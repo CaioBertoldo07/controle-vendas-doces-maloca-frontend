@@ -27,11 +27,12 @@ describe("cenário acadêmico multiagente (Tradicional em alta, Maracujá em que
       fonte: "AGENTE_INTELIGENCIA", solicitada: true, disponivel: true,
       metodologia: { tipo: "MEDIA_HISTORICA_RECENTE", janelaSemanas: 4, periodo: { dataInicio: "2026-08-30", dataFim: "2026-09-26" } },
     });
-    expect(saida.demanda.sabores.map((s) => [s.sabor, s.mediaSemanal, s.producaoMediaSemanal, s.razaoProducaoDemanda, s.situacao])).toEqual([
-      ["Tradicional", 30, 20, 0.667, "PRODUCAO_ABAIXO_DA_DEMANDA"],
+    // Etapa 4: a comparação produção × demanda passou para o ritmo canônico (mesma janela, uma visão só)
+    expect(saida.ritmo.sabores.map((s) => [s.sabor, s.demandaMediaSemanal, s.producaoMediaSemanal, s.razaoProducaoVendas, s.situacao])).toEqual([
       ["Maracujá", 20, 20, 1, "ALINHADA"],
+      ["Tradicional", 30, 20, 0.667, "PRODUCAO_ABAIXO_DA_DEMANDA"],
     ]);
-    expect(saida.demanda.sabores[0].texto).toBe(
+    expect(saida.ritmo.sabores[1].texto).toBe(
       "A demanda média recente de Tradicional é 30 un./semana (4 semanas completas, 30/08 a 26/09). A produção no mesmo período foi de 20 un./semana, abaixo desse ritmo.",
     );
     expect(saida.demanda.divergencias).toEqual([{
@@ -54,13 +55,14 @@ describe("cenário acadêmico multiagente (Tradicional em alta, Maracujá em que
     const pai = await consultas.buscarExecucao(execucaoId);
     expect(pai).toMatchObject({ agente: "estoque", tipoExecucao: "ANALISAR_ESTOQUE", gatilho: "HTTP", status: "SUCESSO", execucaoPaiId: null });
 
-    const [msg] = pai.mensagens;
-    expect(pai.mensagens).toHaveLength(1);
+    // Etapa 4: o pai também consulta Vendas (Tradicional); aqui a cadeia da Inteligência
+    const msg = pai.mensagens.find((m) => m.tipo === "DEMANDA_MEDIA");
+    expect(pai.mensagens.map((m) => m.tipo)).toEqual(["DEMANDA_MEDIA", "EXPOSICAO_CLIENTES_POR_SABOR"]);
     expect(msg).toMatchObject({ agenteOrigem: "estoque", agenteDestino: "inteligencia", tipo: "DEMANDA_MEDIA", status: "RESPONDIDA" });
     expect(msg.conteudo).toEqual({ dataReferencia: REF, janelaSemanas: 4, saborIds: expect.any(Array) });
     expect(DEMANDA_MEDIA.resposta.safeParse(msg.resposta).success).toBe(true);
 
-    expect(pai.filhas).toEqual([expect.objectContaining({ id: msg.execucaoDestinoId, agente: "inteligencia", tipoExecucao: "DEMANDA_MEDIA", status: "SUCESSO" })]);
+    expect(pai.filhas[0]).toEqual(expect.objectContaining({ id: msg.execucaoDestinoId, agente: "inteligencia", tipoExecucao: "DEMANDA_MEDIA", status: "SUCESSO" }));
     const filha = await consultas.buscarExecucao(msg.execucaoDestinoId);
     expect(filha).toMatchObject({ gatilho: "MENSAGEM", execucaoPaiId: execucaoId, metadados: { profundidade: 1 } });
     expect(filha.duracaoMs).toBeGreaterThanOrEqual(0);
@@ -93,8 +95,11 @@ describe("falha da Inteligência: o Estoque não cai, entra em modo degradado", 
     await cenarioMultiagente();
     const r = await analisar(runtimeTeste({ substituir: [agenteTeste("inteligencia", async () => { throw new Error("indisponível"); })] }));
     const pai = await conferirDegradado(r, "FALHA_AGENTE_INTELIGENCIA");
-    expect(pai.mensagens.map((m) => [m.tipo, m.status])).toEqual([["DEMANDA_MEDIA", "FALHA"]]);
-    expect(pai.filhas.map((f) => [f.agente, f.status])).toEqual([["inteligencia", "FALHA"]]);
+    // Etapa 4: a falha da Inteligência não impede a consulta ao Vendas (a divergência é base local suficiente)
+    expect(pai.mensagens.map((m) => [m.tipo, m.status])).toEqual([["DEMANDA_MEDIA", "FALHA"], ["EXPOSICAO_CLIENTES_POR_SABOR", "RESPONDIDA"]]);
+    expect(pai.filhas.map((f) => [f.agente, f.status])).toEqual([["inteligencia", "FALHA"], ["vendas", "SUCESSO"]]);
+    expect(r.saida.clientes).toMatchObject({ solicitada: true, disponivel: true });
+    expect(r.saida.ritmo.fonteDemanda).toBe("FLUXO_LOCAL");
     expect(r.saida.demanda.execucaoInteligenciaId).toBe(pai.filhas[0].id);
   });
 
@@ -112,7 +117,7 @@ describe("falha da Inteligência: o Estoque não cai, entra em modo degradado", 
     await cenarioMultiagente();
     const r = await analisar(runtimeTeste({ substituir: [agenteTeste("inteligencia", async () => ({ sabores: [{ saborId: 1, mediaSemanal: 999 }] }))] }));
     await conferirDegradado(r, "RESPOSTA_INVALIDA");
-    expect(await prisma.chamadaTool.count({ where: { execucaoId: r.execucaoId, tool: "consultarProducaoVendasPeriodo" } })).toBe(2); // só as janelas de ritmo
+    expect(await prisma.chamadaTool.count({ where: { execucaoId: r.execucaoId, tool: "consultarProducaoVendasPeriodo" } })).toBe(1); // Etapa 4: só a janela canônica
   });
 
   it("limite de profundidade: sem margem para delegar, nenhuma mensagem é criada e o Estoque conclui", async () => {
@@ -130,7 +135,10 @@ describe("falha da Inteligência: o Estoque não cai, entra em modo degradado", 
     const r = await analisar(runtimeTeste({ substituir: [eco] }));
     expect(r.status).toBe("SUCESSO");
     const execs = await prisma.execucaoAgente.findMany({ orderBy: { id: "asc" }, select: { agente: true, status: true, metadados: true } });
-    expect(execs.map((e) => [e.agente, e.metadados.profundidade])).toEqual([["estoque", 0], ["inteligencia", 1], ["estoque", 2], ["inteligencia", 3], ["estoque", 4]]);
+    // Etapa 4: cada Estoque da cadeia também consulta Vendas (o de profundidade 4 não pode mais delegar)
+    expect(execs.map((e) => [e.agente, e.metadados.profundidade])).toEqual([
+      ["estoque", 0], ["inteligencia", 1], ["estoque", 2], ["inteligencia", 3], ["estoque", 4], ["vendas", 3], ["vendas", 1],
+    ]);
     expect(execs.every((e) => e.status === "SUCESSO")).toBe(true);
   });
 });
@@ -142,8 +150,8 @@ describe("pela API (autenticada)", () => {
     const res = await api(token).post("/api/agentes/estoque/executar").send({ tipo: "ANALISAR_ESTOQUE", dados: { dataReferencia: REF } });
     expect(res.status).toBe(200);
     const det = await api(token).get(`/api/agentes/execucoes/${res.body.execucaoId}`);
-    expect(det.body.mensagens.map((m) => [m.agenteDestino, m.tipo, m.status])).toEqual([["inteligencia", "DEMANDA_MEDIA", "RESPONDIDA"]]);
-    expect(det.body.filhas.map((f) => [f.agente, f.status])).toEqual([["inteligencia", "SUCESSO"]]);
+    expect(det.body.mensagens.map((m) => [m.agenteDestino, m.tipo, m.status])).toEqual([["inteligencia", "DEMANDA_MEDIA", "RESPONDIDA"], ["vendas", "EXPOSICAO_CLIENTES_POR_SABOR", "RESPONDIDA"]]);
+    expect(det.body.filhas.map((f) => [f.agente, f.status])).toEqual([["inteligencia", "SUCESSO"], ["vendas", "SUCESSO"]]);
     const filha = await api(token).get(`/api/agentes/execucoes/${det.body.filhas[0].id}`);
     expect(filha.body.chamadasTool.map((c) => c.tool)).toEqual(["consultarVendasDiariasPorSabor"]);
 

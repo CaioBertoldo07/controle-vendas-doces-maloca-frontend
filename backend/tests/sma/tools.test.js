@@ -27,12 +27,13 @@ async function cenarioVendas() {
 describe("catálogo", () => {
   // Etapa 2: +consultarReceitas e +consultarProducaoVendasPeriodo (Agente de Estoque).
   // Etapa 3: +consultarVendasDiariasPorSabor e +consultarCustosPeriodo (Agente de Inteligência).
-  it("13 tools; só proporAcao escreve; todas com JSON Schema estrito para o LLM", () => {
+  // Etapa 4: +consultarComprasClientes e +consultarUnidadesClienteSabor (Agente de Vendas).
+  it("15 tools; só proporAcao escreve; todas com JSON Schema estrito para o LLM", () => {
     expect([...CATALOGO.keys()]).toEqual([
       "consultarVendasPeriodo", "consultarRankingSabores", "consultarRecebiveis", "consultarEstoqueAcabado",
       "consultarSaldoMateriasPrimas", "consultarResumoProducao", "calcularNecessidadesProducao",
       "consultarEstatisticasCliente", "consultarReceitas", "consultarProducaoVendasPeriodo",
-      "consultarVendasDiariasPorSabor", "consultarCustosPeriodo", "proporAcao",
+      "consultarVendasDiariasPorSabor", "consultarCustosPeriodo", "consultarComprasClientes", "consultarUnidadesClienteSabor", "proporAcao",
     ]);
     expect([...CATALOGO.values()].filter((t) => t.escrita).map((t) => t.nome)).toEqual(["proporAcao"]);
     for (const t of CATALOGO.values()) {
@@ -177,8 +178,13 @@ describe("arquitetura (verificação estática do código)", () => {
     expect(importacoes(fs.readFileSync(path.resolve("src/agents/tools/vendas.js"), "utf8"))).toContain("../../services/vendasService.js");
   });
 
-  it("Estoque e Inteligência não se importam: a cooperação passa só pelo runtime (Etapa 3)", () => {
-    for (const [dir, proibido] of [["src/agents/agentes/estoque", /inteligencia/], ["src/agents/agentes/inteligencia", /estoque/]]) {
+  // Etapa 4: + Vendas. Nenhum agente especializado importa outro.
+  it("Estoque, Inteligência e Vendas não se importam: a cooperação passa só pelo runtime (Etapas 3 e 4)", () => {
+    for (const [dir, proibido] of [
+      ["src/agents/agentes/estoque", /inteligencia|vendas/],
+      ["src/agents/agentes/inteligencia", /estoque|vendas/], // "comum/indicadoresVendas" tem V maiúsculo: não é o agente
+      ["src/agents/agentes/vendas", /estoque|inteligencia/],
+    ]) {
       for (const [arq, src] of ler(dir)) {
         expect(importacoes(src).filter((i) => proibido.test(i)), `${dir}/${arq}`).toEqual([]);
       }
@@ -186,7 +192,7 @@ describe("arquitetura (verificação estática do código)", () => {
   });
 
   it("agentes e LLM não importam Prisma, services nem controllers (só falam pelo contexto)", () => {
-    for (const dir of ["src/agents/agentes", "src/agents/llm", "src/agents/contratos"]) {
+    for (const dir of ["src/agents/agentes", "src/agents/llm", "src/agents/contratos", "src/agents/comum"]) {
       for (const [arq, src] of ler(dir)) {
         expect(importacoes(src).filter((i) => /prisma|services|controllers|acoes\/servicoAcoes/.test(i)), `${dir}/${arq}`).toEqual([]);
       }

@@ -12,9 +12,11 @@ import {
   deslocarDiaISO,
   diaCivilISO,
   diaDaSemanaISO,
+  diasEntre,
   formatarDiaCivil,
   hojeCivilISO,
   inicioDaSemanaISO,
+  semanasCompletas,
   intervaloDaSemana,
   intervaloDoDia,
   intervaloDoMes,
@@ -126,6 +128,14 @@ describe("semana civil em texto (Etapa 3: séries semanais do Agente de Intelig�
     expect(inicioDaSemanaISO("2026-10-03")).toBe("2026-09-27");
     expect(inicioDaSemanaISO("2027-01-01")).toBe("2026-12-27");
     expect(inicioDaSemanaISO("2026-09-30")).toBe(diaCivilISO(intervaloDaSemana(civil(2026, 9, 30, 23, 59)).inicio));
+  });
+});
+
+describe("janela canônica e dias entre datas (Etapa 4: Estoque, Inteligência e Vendas)", () => {
+  it("semanasCompletas: N semanas domingo–sábado antes da semana da referência; diasEntre em dias civis", () => {
+    expect(semanasCompletas("2026-09-30", 2)).toEqual({ semanas: [{ inicio: "2026-09-13", fim: "2026-09-19" }, { inicio: "2026-09-20", fim: "2026-09-26" }], parcial: { inicio: "2026-09-27", fim: "2026-09-30" } });
+    expect(semanasCompletas("2026-09-26", 1).semanas).toEqual([{ inicio: "2026-09-13", fim: "2026-09-19" }]); // sábado: a semana dele ainda é parcial
+    expect([diasEntre("2026-09-05", "2026-09-30"), diasEntre("2028-02-28", "2028-03-01"), diasEntre("2026-12-31", "2027-01-01"), diasEntre("2026-09-30", "2026-09-05")]).toEqual([25, 2, 1, -25]);
   });
 });
 

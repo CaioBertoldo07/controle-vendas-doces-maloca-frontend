@@ -76,4 +76,6 @@ export const consultarRecebiveis = definirTool({
       truncado: vendas.length > limite,
     };
   },
+  // Etapa 4: a auditoria guarda totais, não os nomes dos clientes.
+  resumir: (d) => ({ quantidade: d.quantidade, valorPendente: d.valorPendente, listadas: d.vendas.length, truncado: d.truncado }),
 });
