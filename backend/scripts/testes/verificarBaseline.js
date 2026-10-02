@@ -13,7 +13,25 @@
  * refazer a suíte; qualquer outra falha é definitiva.
  */
 const ASSINATURA_QUEDA_NATIVA = /Worker exited unexpectedly with exit code 3221226505\b/;
-export const ehQuedaNativa = (saida) => ASSINATURA_QUEDA_NATIVA.test(String(saida ?? ""));
+export const CODIGO_QUEDA_NATIVA = 3221226505;
+/**
+ * Duas formas observadas: o WORKER cai (mensagem acima, Etapa 0.4) ou o
+ * PROCESSO PRINCIPAL do Vitest cai com o mesmo código (Etapa 6, logo depois do
+ * globalSetup, sem nenhuma saída de teste). Qualquer outro código é definitivo.
+ */
+export const ehQuedaNativa = (saida, codigo) => codigo === CODIGO_QUEDA_NATIVA || ASSINATURA_QUEDA_NATIVA.test(String(saida ?? ""));
+
+/** Dados mínimos de uma queda para o log de investigação (sem conteúdo de teste). */
+export function descreverQueda(saida, codigo) {
+  const texto = String(saida ?? "");
+  const arquivos = [...texto.matchAll(/tests\/[\w/.-]+\.test\.js/g)].map((m) => m[0]);
+  return {
+    tipo: ASSINATURA_QUEDA_NATIVA.test(texto) ? "WORKER" : "PROCESSO_PRINCIPAL",
+    codigo,
+    ultimoArquivo: arquivos.at(-1) ?? null,
+    arquivosConcluidos: (texto.match(/^\s*[✓×❯] tests\//gm) ?? []).length,
+  };
+}
 
 /** Devolve a lista de divergências (vazia = aprovado). Função pura. */
 export function verificarResultado(resultado, baseline) {

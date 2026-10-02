@@ -10,6 +10,12 @@
 //   - existe IGNORADA com a mesma chave → não recria (o gestor já descartou);
 //   - só RESOLVIDA ou nenhuma           → cria uma nova ABERTA (o problema voltou).
 // Recomendações sem chave seguem a regra da Etapa 1 (sempre cria).
+//
+// Etapa 6, unicidade NO BANCO: a ABERTA guarda `chaveAtiva` = agente|tipo|chave
+// (índice único; NULL quando RESOLVIDA/IGNORADA). O registro roda numa transação
+// com SELECT ... FOR UPDATE na chave; se duas análises simultâneas tentam criar,
+// uma recebe violação de unicidade (ou deadlock) e repete: na repetição encontra
+// a ABERTA da outra e só a atualiza. N análises concorrentes → 1 ABERTA.
 import { z } from "zod";
 import { erro } from "../../lib/erros.js";
 import { prisma } from "../../lib/prisma.js";
@@ -29,11 +35,9 @@ const esquema = z
   .strict();
 
 const chaveEfetiva = (tipo, chave) => `${tipo}|${chave}`;
-const porChave = (agente, chave, status) =>
-  prisma.recomendacao.findFirst({
-    where: { agente, status, dados: { path: "$.controle.chave", equals: chave } },
-    orderBy: { id: "desc" },
-  });
+const TENTATIVAS_CONCORRENCIA = 5;
+/** P2002 = violação de unicidade (outra análise criou antes); P2034 = deadlock/conflito de escrita. */
+export const ehConflitoDeConcorrencia = (e) => e?.code === "P2002" || e?.code === "P2034";
 
 /** Devolve { operacao: CRIADA | ATUALIZADA | SUPRIMIDA, recomendacao }. */
 export async function registrarRecomendacao({ agente, execucaoId, entrada }) {
@@ -48,24 +52,34 @@ export async function registrarRecomendacao({ agente, execucaoId, entrada }) {
   }
 
   const efetiva = chaveEfetiva(campos.tipo, chave);
-  const aberta = await porChave(agente, efetiva, STATUS_RECOMENDACAO.ABERTA);
-  if (aberta) {
-    const controle = { ...aberta.dados.controle, ocorrencias: (aberta.dados.controle.ocorrencias ?? 1) + 1, ultimaDeteccaoEm: agora, ultimaExecucaoId: execucaoId };
-    const recomendacao = await prisma.recomendacao.update({
-      where: { id: aberta.id },
-      data: { ...campos, execucaoId, dados: paraRegistro({ ...(extras ?? {}), controle }) },
-    });
-    return { operacao: "ATUALIZADA", recomendacao };
+  const ativa = `${agente}|${efetiva}`;
+  for (let tentativa = 1; ; tentativa++) {
+    try {
+      return await prisma.$transaction(async (tx) => {
+        const [travada] = await tx.$queryRaw`SELECT id FROM recomendacoes WHERE chaveAtiva = ${ativa} FOR UPDATE`;
+        if (travada) {
+          const aberta = await tx.recomendacao.findUnique({ where: { id: travada.id } });
+          const controle = { ...aberta.dados.controle, ocorrencias: (aberta.dados.controle.ocorrencias ?? 1) + 1, ultimaDeteccaoEm: agora, ultimaExecucaoId: execucaoId };
+          const recomendacao = await tx.recomendacao.update({
+            where: { id: aberta.id },
+            data: { ...campos, execucaoId, dados: paraRegistro({ ...(extras ?? {}), controle }) },
+          });
+          return { operacao: "ATUALIZADA", recomendacao };
+        }
+        const ignorada = await tx.recomendacao.findFirst({ where: { agente, status: STATUS_RECOMENDACAO.IGNORADA, dados: { path: "$.controle.chave", equals: efetiva } }, orderBy: { id: "desc" } });
+        if (ignorada) return { operacao: "SUPRIMIDA", recomendacao: ignorada };
+
+        const controle = { chave: efetiva, ocorrencias: 1, primeiraDeteccaoEm: agora, ultimaDeteccaoEm: agora, primeiraExecucaoId: execucaoId, ultimaExecucaoId: execucaoId };
+        const recomendacao = await tx.recomendacao.create({
+          data: { ...campos, agente, execucaoId, chaveAtiva: ativa, dados: paraRegistro({ ...(extras ?? {}), controle }) },
+        });
+        return { operacao: "CRIADA", recomendacao };
+      });
+    } catch (e) {
+      if (!ehConflitoDeConcorrencia(e) || tentativa >= TENTATIVAS_CONCORRENCIA) throw e;
+      await new Promise((r) => setTimeout(r, 10 * tentativa + Math.floor(Math.random() * 20)));
+    }
   }
-
-  const ignorada = await porChave(agente, efetiva, STATUS_RECOMENDACAO.IGNORADA);
-  if (ignorada) return { operacao: "SUPRIMIDA", recomendacao: ignorada };
-
-  const controle = { chave: efetiva, ocorrencias: 1, primeiraDeteccaoEm: agora, ultimaDeteccaoEm: agora, primeiraExecucaoId: execucaoId, ultimaExecucaoId: execucaoId };
-  const recomendacao = await prisma.recomendacao.create({
-    data: { ...campos, agente, execucaoId, dados: paraRegistro({ ...(extras ?? {}), controle }) },
-  });
-  return { operacao: "CRIADA", recomendacao };
 }
 
 /**
@@ -85,6 +99,7 @@ export async function encerrarAusentes({ agente, execucaoId, tipos, chavesAtivas
       data: {
         status: STATUS_RECOMENDACAO.RESOLVIDA,
         resolvidaEm: new Date(),
+        chaveAtiva: null,
         dados: paraRegistro({ ...rec.dados, controle: { ...rec.dados.controle, resolucao: { modo: "AUTOMATICA", execucaoId, motivo: "Condição não detectada nesta análise" } } }),
       },
     });
@@ -105,6 +120,7 @@ export async function alterarStatus(id, status) {
     data: {
       status,
       resolvidaEm: new Date(),
+      chaveAtiva: null,
       dados: paraRegistro({ ...(atual.dados ?? {}), controle: { ...(atual.dados?.controle ?? {}), resolucao: { modo: "GESTOR" } } }),
     },
   });

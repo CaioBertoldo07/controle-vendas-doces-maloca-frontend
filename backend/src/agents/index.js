@@ -24,11 +24,14 @@ export function criarRegistroPadrao() {
   return registro;
 }
 
+/** Provedor de LLM do servidor (Etapa 5): real só com LLM_PROVIDER; nunca em APP_ENV=test. O health check lê o estado. */
+export const provedorPadrao = await obterProvedorConfigurado();
+
 /** Runtime usado pelo servidor HTTP. */
 export const runtimePadrao = criarRuntime({
   registro: criarRegistroPadrao(),
   catalogo: CATALOGO,
-  provedorLLM: await obterProvedorConfigurado(), // Etapa 5: real só com LLM_PROVIDER; nunca em APP_ENV=test
+  provedorLLM: provedorPadrao,
 });
 
 export { criarRegistro, criarRuntime, CATALOGO };

@@ -67,7 +67,7 @@ export function textoDosFatos(resultados) {
       blocos.push(`• ${r.intencao}: o agente ${r.agente} não respondeu agora (modo degradado).`);
       continue;
     }
-    if (r.textos?.length) blocos.push(...r.textos.map((t) => `• ${t}`));
+    if (r.textos?.length) blocos.push(...r.textos.map((t) => `• ${t}`).filter((b) => !blocos.includes(b))); // a mesma frase de dois especialistas aparece uma vez
     else blocos.push(`• ${r.intencao}: dados disponíveis em anexo estruturado.`);
   }
   return blocos.length ? blocos.join("\n") : "Não há dados para responder a essa pergunta.";

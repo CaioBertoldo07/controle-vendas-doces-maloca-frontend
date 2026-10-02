@@ -63,4 +63,15 @@ test("ehQuedaNativa reconhece só a queda 0xC0000409 do worker", async () => {
   assert.equal(ehQuedaNativa("AssertionError: expected 201 to be 200"), false);
   assert.equal(ehQuedaNativa("Worker exited unexpectedly with exit code 32212265050"), false);
   assert.equal(ehQuedaNativa(undefined), false);
+  // Etapa 6: o processo PRINCIPAL do Vitest também cai com 0xC0000409 (sem saída de teste)
+  assert.equal(ehQuedaNativa("🧪 Banco de teste: ...", 3221226505), true);
+  assert.equal(ehQuedaNativa("🧪 Banco de teste: ...", 1), false);
+  assert.equal(ehQuedaNativa("", 134), false);
+});
+
+test("descreverQueda: tipo, código, último arquivo citado e arquivos concluídos (log de investigação)", async () => {
+  const { descreverQueda } = await import("./verificarBaseline.js");
+  const saida = " ✓ tests/sma/a.test.js (3 tests) 10ms\n ✓ tests/sma/b.test.js (2 tests) 9ms\nError: Worker exited unexpectedly with exit code 3221226505 during started state while running test files C:/x/tests/sma/c.test.js";
+  assert.deepEqual(descreverQueda(saida, 1), { tipo: "WORKER", codigo: 1, ultimoArquivo: "tests/sma/c.test.js", arquivosConcluidos: 2 });
+  assert.deepEqual(descreverQueda("🧪 Banco de teste", 3221226505), { tipo: "PROCESSO_PRINCIPAL", codigo: 3221226505, ultimoArquivo: null, arquivosConcluidos: 0 });
 });

@@ -16,6 +16,7 @@ import { fileURLToPath } from "node:url";
 import {
   API_KEY_TESTE,
   JWT_SECRET_TESTE,
+  ROTINAS_TOKEN_TESTE,
   TZ_TESTE,
   prepararAmbienteDeTeste,
 } from "./ambiente.js";
@@ -82,6 +83,12 @@ export default async function setup(project) {
       // Etapa 5: o servidor de teste nunca tem provedor de LLM real nem chave.
       LLM_PROVIDER: "",
       ANTHROPIC_API_KEY: "",
+      // Etapa 6: o servidor de teste exercita rotinas internas e sinais de evento (desligados por padrão em qualquer outro ambiente).
+      SMA_ENABLED: "true",
+      ASSISTENTE_ENABLED: "true",
+      AGENT_SCHEDULER_ENABLED: "true",
+      SMA_EVENTOS_ENABLED: "true",
+      SMA_ROTINAS_TOKEN: ROTINAS_TOKEN_TESTE,
     },
     stdio: ["ignore", "pipe", "pipe"],
   });

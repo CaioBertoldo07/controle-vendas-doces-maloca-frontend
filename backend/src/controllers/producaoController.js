@@ -2,6 +2,7 @@
 // services/producaoService.js.
 import { responderErroDominio } from "../lib/erros.js";
 import * as producaoService from "../services/producaoService.js";
+import { sinalizarSeHabilitado } from "../agents/rotinas/index.js";
 
 export const listarProducao = async (req, res) => {
   try {
@@ -13,7 +14,9 @@ export const listarProducao = async (req, res) => {
 
 export const criarProducao = async (req, res) => {
   try {
-    res.status(201).json(await producaoService.criarProducao(req.body));
+    const producao = await producaoService.criarProducao(req.body);
+    await sinalizarSeHabilitado("PRODUCAO_REGISTRADA"); // Etapa 6: só marca que a análise é necessária
+    res.status(201).json(producao);
   } catch (error) {
     if (responderErroDominio(res, error)) return;
     res

@@ -17,6 +17,8 @@ import {
 // Segredos fictícios, usados só pela suíte (servidor de teste e fixtures).
 export const JWT_SECRET_TESTE = "segredo-ficticio-da-suite-de-caracterizacao";
 export const API_KEY_TESTE = "chave-ficticia-da-suite-de-caracterizacao";
+// Etapa 6: segredo FICTÍCIO das rotinas internas (>= 32 caracteres), só da suíte.
+export const ROTINAS_TOKEN_TESTE = "segredo-ficticio-das-rotinas-da-suite-0123456789";
 // Fuso do PROCESSO (servidor e testes) durante a suíte. Padrão: UTC, o fuso do
 // container de produção. MALOCA_TZ_TESTE=America/Manaus roda a mesma suíte em
 // outro fuso: as regras de negócio não podem depender do fuso da máquina

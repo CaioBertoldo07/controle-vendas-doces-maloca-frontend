@@ -18,7 +18,7 @@ import {
   mesAtualCivil,
   nomeDoMes,
 } from "../lib/periodos.js";
-import { prisma } from "../lib/prisma.js";
+import { emTransacao, prisma } from "../lib/prisma.js";
 import { obterSaldoMateriaPrima } from "./materiaPrimaService.js";
 
 /**
@@ -130,18 +130,19 @@ function validarItens(sabores) {
   }
 }
 
-export async function criarProducao({ data, observacao, sabores } = {}) {
+/** `db` (Etapa 6): cliente Prisma ou de transação (o executor de ações passa a dele). */
+export async function criarProducao({ data, observacao, sabores } = {}, db = prisma) {
   validarItens(sabores);
 
-  const necessidades = await calcularNecessidades(sabores);
+  const necessidades = await calcularNecessidades(sabores, db);
 
-  const faltantes = await verificarFaltantes(necessidades);
+  const faltantes = await verificarFaltantes(necessidades, db);
   if (faltantes.length > 0) throw estoqueInsuficiente(faltantes);
 
   // Data civil de Manaus; a produção e as saídas de insumo recebem a mesma.
   const quando = data ? lerDataCivil(data) : agoraCivil();
 
-  return prisma.$transaction(async (tx) => {
+  return emTransacao(db, async (tx) => {
     const prod = await tx.producao.create({
       data: {
         data: quando,

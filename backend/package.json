@@ -19,7 +19,8 @@
     "test:guardas": "node --test \"scripts/**/*.test.js\"",
     "tcc:coleta": "node scripts/tcc/coletarDadosReadOnly.js",
     "tcc:restaurar": "node scripts/tcc/restaurarBackupLocal.js",
-    "backfill:pagamentos": "node scripts/marcarVendasAntigasPagas.js"
+    "backfill:pagamentos": "node scripts/marcarVendasAntigasPagas.js",
+    "llm:smoke": "node scripts/agentes/smokeProviderReal.js"
   },
   "keywords": [],
   "author": "",

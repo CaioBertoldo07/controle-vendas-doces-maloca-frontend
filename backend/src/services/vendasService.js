@@ -141,6 +141,7 @@ export async function criarVendaPorTexto({
   return { duplicata: false, venda, cliente, saboresResolvidos };
 }
 
+/** `db` (Etapa 6): cliente Prisma ou de transação; padrão = cliente global (comportamento anterior). */
 export async function criarVenda({
   clienteId,
   quantidade,
@@ -149,7 +150,7 @@ export async function criarVenda({
   data,
   sabores,
   pago = false,
-} = {}) {
+} = {}, db = prisma) {
   if (!clienteId || !quantidade || !valor || !sabores || sabores.length === 0) {
     throw erro(400, "Dados incompletos");
   }
@@ -160,14 +161,14 @@ export async function criarVenda({
   const quantidadeTotal = somarQuantidades(itens);
   if (!(quantidadeTotal > 0)) throw erro(400, "Quantidade deve ser maior que zero");
 
-  const cliente = await prisma.cliente.findUnique({
+  const cliente = await db.cliente.findUnique({
     where: { id: parseInt(clienteId) },
   });
   if (!cliente) throw erro(404, "Cliente não encontrado");
 
   const foiPago = ehPago(pago);
   // Venda e itens num único nested write (atômico)
-  return prisma.venda.create({
+  return db.venda.create({
     data: {
       clienteId: parseInt(clienteId),
       quantidade: quantidadeTotal,
@@ -217,8 +218,8 @@ export async function listarVendas({ mes, ano, clienteId, dataInicio, dataFim, l
   });
 }
 
-export async function buscarVenda(id) {
-  const venda = await prisma.venda.findUnique({
+export async function buscarVenda(id, db = prisma) {
+  const venda = await db.venda.findUnique({
     where: { id: parseInt(id) },
     include: INCLUIR_CLIENTE_E_SABORES,
   });
@@ -279,17 +280,17 @@ export async function atualizarVenda(id, { clienteId, valor, desconto, data, sab
  * Marca como paga (dataPagamento informada, ou a já existente, ou agora em
  * Manaus) ou volta para pendente (limpa a data).
  */
-export async function atualizarPagamento(id, { pago, dataPagamento } = {}) {
+export async function atualizarPagamento(id, { pago, dataPagamento } = {}, db = prisma) {
   if (pago === undefined) throw erro(400, "Campo 'pago' é obrigatório");
 
-  const vendaExiste = await prisma.venda.findUnique({
+  const vendaExiste = await db.venda.findUnique({
     where: { id: parseInt(id) },
   });
   if (!vendaExiste) throw erro(404, "Venda não encontrada");
 
   const foiPago = ehPago(pago);
 
-  return prisma.venda.update({
+  return db.venda.update({
     where: { id: parseInt(id) },
     data: {
       pago: foiPago,

@@ -156,7 +156,7 @@ model ExecucaoAgente {
   id            Int              @id @default(autoincrement())
   agente        String           @db.VarChar(50)
   tipoExecucao  String           @db.VarChar(50) // ex.: PING, DIAGNOSTICO, PERGUNTA
-  gatilho       String           @db.VarChar(20) // HTTP | MENSAGEM | INTERNO (CRON/EVENTO no futuro)
+  gatilho       String           @db.VarChar(20) // HTTP (manual) | CHAT | MENSAGEM | AGENDADO | EVENTO | INTERNO
   status        String           @db.VarChar(20) // EM_ANDAMENTO | SUCESSO | FALHA
   iniciadaEm    DateTime         @default(now())
   finalizadaEm  DateTime?
@@ -231,6 +231,7 @@ model Recomendacao {
   descricao   String          @db.Text
   prioridade  String          @db.VarChar(10) // BAIXA | MEDIA | ALTA
   status      String          @default("ABERTA") @db.VarChar(20) // ABERTA | RESOLVIDA | IGNORADA (Etapa 2; dedup por dados.controle.chave)
+  chaveAtiva  String?         @unique @db.VarChar(255) // Etapa 6: agente|tipo|chave enquanto ABERTA; null depois (unicidade no banco)
   dados       Json?
   criadaEm    DateTime        @default(now())
   resolvidaEm DateTime?
@@ -249,6 +250,7 @@ model AcaoProposta {
   descricao       String          @db.Text
   status          String          @default("PENDENTE") @db.VarChar(20) // PENDENTE | APROVADA | REJEITADA | EXECUTANDO | EXECUTADA | FALHA
   criadaPorAgente String          @db.VarChar(50)
+  chaveAtiva      String?         @unique @db.VarChar(64) // Etapa 6: sha256(tipo + payload canônico) enquanto PENDENTE; null depois
   execucaoId      Int?
   execucao        ExecucaoAgente? @relation(fields: [execucaoId], references: [id], onDelete: SetNull)
   criadaEm        DateTime        @default(now())
@@ -277,6 +279,9 @@ model ConversaAgente {
   usuarioId    Int
   usuario      Usuario           @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
   estado       Json? // contexto estruturado: último assunto e desambiguação pendente
+  // Etapa 6: lease de processamento (um turno por vez; expira sozinho se o processo cair)
+  processandoAte     DateTime?
+  tokenProcessamento String?   @db.VarChar(36)
   criadaEm     DateTime          @default(now())
   atualizadaEm DateTime          @updatedAt
   mensagens    MensagemConversa[]
@@ -297,4 +302,39 @@ model MensagemConversa {
 
   @@index([conversaId])
   @@map("mensagens_conversa")
+}
+
+// ============================================================================
+// Autonomia controlada (Etapa 6): rotinas ANALÍTICAS disparadas de fora
+// (scheduler da plataforma) e sinais de eventos. Nunca escrevem domínio.
+// ============================================================================
+
+/// Uma execução de rotina por (rotina, janela): idempotência e trava contra disparos simultâneos.
+model ExecucaoRotina {
+  id           Int       @id @default(autoincrement())
+  rotina       String    @db.VarChar(50)
+  janela       String    @db.VarChar(40) // ex.: dia:2026-10-02 | evento:2026-10-02T14
+  gatilho      String    @db.VarChar(20) // AGENDADO | EVENTO
+  status       String    @db.VarChar(20) // EM_ANDAMENTO | SUCESSO | FALHA
+  execucaoId   Int?
+  tentativas   Int       @default(1)
+  iniciadaEm   DateTime  @default(now())
+  finalizadaEm DateTime?
+  bloqueadoAte DateTime // lease: EM_ANDAMENTO vencido pode ser retomado
+  erro         String?   @db.Text
+
+  @@unique([rotina, janela])
+  @@map("execucoes_rotina")
+}
+
+/// Evento de domínio marca a rotina como "análise necessária"; a execução é consolidada depois.
+model SinalAnalise {
+  rotina         String    @id @db.VarChar(50)
+  pendente       Boolean   @default(false)
+  eventos        Int       @default(0)
+  ultimoEvento   String?   @db.VarChar(50)
+  ultimoEventoEm DateTime?
+  atualizadoEm   DateTime  @updatedAt
+
+  @@map("sinais_analise")
 }

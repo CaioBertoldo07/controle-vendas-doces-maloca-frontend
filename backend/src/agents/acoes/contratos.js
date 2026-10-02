@@ -2,6 +2,8 @@
 // cada tipo tem payload validado, verificação de referências (só leitura) e o
 // executor determinístico, que chama o service já testado. O executor nunca é
 // exposto ao LLM: só roda depois da aprovação do gestor (servicoAcoes.js).
+// Etapa 6: `executar(payload, tx)` recebe o cliente da TRANSAÇÃO do executor:
+// o efeito de domínio e o status EXECUTADA confirmam (ou desfazem) juntos.
 import { z } from "zod";
 import { erro } from "../../lib/erros.js";
 import * as clientesService from "../../services/clientesService.js";
@@ -39,9 +41,9 @@ export const CONTRATOS = Object.freeze({
       await clientesService.buscarCliente(p.clienteId); // 404 se não existe
       await verificarSabores(p.sabores);
     },
-    async executar(p) {
+    async executar(p, tx) {
       const quantidade = p.sabores.reduce((s, i) => s + i.quantidade, 0);
-      const venda = await vendasService.criarVenda({ ...p, quantidade });
+      const venda = await vendasService.criarVenda({ ...p, quantidade }, tx);
       return { vendaId: venda.id, quantidade: venda.quantidade, valor: numero(venda.valor) };
     },
   },
@@ -57,8 +59,8 @@ export const CONTRATOS = Object.freeze({
     async verificar(p) {
       await verificarSabores(p.sabores);
     },
-    async executar(p) {
-      const producao = await producaoService.criarProducao(p); // 422 se faltar insumo
+    async executar(p, tx) {
+      const producao = await producaoService.criarProducao(p, tx); // 422 se faltar insumo
       return { producaoId: producao.id };
     },
   },
@@ -69,9 +71,9 @@ export const CONTRATOS = Object.freeze({
       const venda = await vendasService.buscarVenda(p.vendaId); // 404 se não existe
       if (venda.pago) throw erro(409, `Venda ${p.vendaId} já está paga`);
     },
-    async executar(p) {
-      const antes = await vendasService.buscarVenda(p.vendaId);
-      const venda = await vendasService.atualizarPagamento(p.vendaId, { pago: true, dataPagamento: p.dataPagamento });
+    async executar(p, tx) {
+      const antes = await vendasService.buscarVenda(p.vendaId, tx);
+      const venda = await vendasService.atualizarPagamento(p.vendaId, { pago: true, dataPagamento: p.dataPagamento }, tx);
       return { vendaId: venda.id, jaEstavaPaga: antes.pago };
     },
   },

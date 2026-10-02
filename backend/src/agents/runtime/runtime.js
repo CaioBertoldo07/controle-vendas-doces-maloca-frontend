@@ -101,7 +101,7 @@ export function criarRuntime({ registro, catalogo, provedorLLM = null, limiteMs 
         });
         await prisma.mensagemAgente.update({
           where: { id: mensagem.id },
-          data: { status: "RESPONDIDA", execucaoDestinoId: r.execucaoId, resposta: paraRegistro(r.saida) },
+          data: { status: "RESPONDIDA", execucaoDestinoId: r.execucaoId, resposta: paraRegistro(r.saida, LIMITE_SAIDA) }, // Etapa 6: a resposta é a saída do destino (Vendas ~22 KB): mesmo limite da execução
         });
         return r.saida;
       } catch (e) {

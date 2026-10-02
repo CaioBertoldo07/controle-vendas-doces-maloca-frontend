@@ -1,6 +1,7 @@
 // HTTP das vendas. A regra está em services/vendasService.js.
 import { responderErroDominio } from "../lib/erros.js";
 import * as vendasService from "../services/vendasService.js";
+import { sinalizarSeHabilitado } from "../agents/rotinas/index.js";
 
 export const criarVendaAuto = async (req, res) => {
   try {
@@ -15,6 +16,7 @@ export const criarVendaAuto = async (req, res) => {
     }
 
     const { venda, cliente, saboresResolvidos } = resultado;
+    await sinalizarSeHabilitado("VENDA_REGISTRADA"); // Etapa 6: só marca que a análise é necessária
     console.log(
       `✅ [AUTO] Venda registrada via n8n: ${venda.id} - ${cliente.nome}`,
     );
@@ -39,6 +41,7 @@ export const criarVendaAuto = async (req, res) => {
 export const criarVenda = async (req, res) => {
   try {
     const venda = await vendasService.criarVenda(req.body);
+    await sinalizarSeHabilitado("VENDA_REGISTRADA"); // Etapa 6: só marca que a análise é necessária
     console.log("✅ Venda criada:", venda);
     res.status(201).json(venda);
   } catch (error) {

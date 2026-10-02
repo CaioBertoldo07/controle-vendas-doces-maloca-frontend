@@ -10,6 +10,8 @@ import producaoRoutes from "./routes/producao.js";
 import materiasPrimasRoutes from "./routes/materiasPrimas.js";
 import estoqueRoutes from "./routes/estoque.js";
 import agentesRoutes from "./routes/agentes.js";
+import healthRoutes from "./routes/health.js";
+import internoRoutes from "./routes/interno.js";
 import { verificarAuth } from "./middlewares/auth.js";
 import { replacerJsonTemporal } from "./lib/periodos.js";
 
@@ -34,6 +36,10 @@ app.use(express.json());
 
 // Rotas públicas
 app.use("/api/auth", authRoutes);
+app.use("/api/health", healthRoutes); // Etapa 6: sem segredo nem dado de negócio
+
+// Rotas internas (Etapa 6): agendador externo, segredo próprio; inexistentes sem AGENT_SCHEDULER_ENABLED=true
+app.use("/api/interno", internoRoutes);
 
 // Rotas protegidas
 app.use("/api/clientes", verificarAuth, clientesRoutes);

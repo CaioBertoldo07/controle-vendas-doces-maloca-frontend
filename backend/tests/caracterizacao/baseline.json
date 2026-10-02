@@ -1,11 +1,17 @@
 {
   "descricao": "Baseline da suíte de caracterização. Só altere de forma consciente, registrando o motivo em docs/tcc.",
-  "testes": 582,
-  "arquivos": 33,
+  "testes": 627,
+  "arquivos": 39,
   "pendentesPermitidos": 0,
   "definidaEm": "2026-10-02",
-  "motivo": "Etapa 5: +71 testes do Atendimento conversacional, do Coordenador por intenções e do provedor de LLM (llmProvedor 15, conversaRegras 25, atendimento 24, chatHttp 7 em tests/sma). Nenhum teste removido; 3 testes anteriores ajustados por evolução deliberada (catálogo de tools, chaves do contexto do agente, verificação de arquitetura) (docs/tcc/etapa-5-atendimento-conversacional.md)",
+  "motivo": "Etapa 6: +45 testes de hardening (atomicidade, concorrência/lease, verificação factual por afirmações, rotinas/eventos/flags fail-closed/health, privacidade, cenário integrado) (docs/tcc/etapa-6-hardening-producao.md)",
   "historico": [
+    {
+      "testes": 582,
+      "arquivos": 33,
+      "definidaEm": "2026-10-02",
+      "motivo": "Etapa 5: +71 testes do Atendimento conversacional (docs/tcc/etapa-5-atendimento-conversacional.md)"
+    },
     {
       "testes": 511,
       "arquivos": 29,

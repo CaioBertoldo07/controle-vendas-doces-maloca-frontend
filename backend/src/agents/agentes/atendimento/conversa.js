@@ -5,13 +5,16 @@
 //     → LLM: interpretação ESTRUTURADA (JSON Schema + Zod; inválida → nova tentativa → erro controlado)
 //     → código: limites, nomes/números citados, resolução segura de entidades
 //     → Coordenador (mensagem SMA): CONSULTA aos especialistas | ACAO (proposta PENDENTE no Vendas)
-//     → LLM: redação a partir dos fatos compactos → verificação dos números → (falhou? template)
+//     → LLM: AFIRMAÇÕES estruturadas citando o catálogo de fatos → validação de cada uma
+//       (Etapa 6: número×entidade×unidade×natureza, datas, guardas semânticas) → inválidas descartadas
+//       → nenhuma válida? template → ressalvas determinísticas dos fatos críticos
 //     → resposta + novo estado da conversa
 //
 // O LLM interpreta e redige; os especialistas calculam; o código decide. Nada
 // é executado: ações viram AcaoProposta PENDENTE e só o gestor aprova. A
 // conversa (tabelas) é gravada pelo serviço de conversa, fora do agente.
 import { ErroLLM } from "../../llm/erros.js";
+import { ESQUEMA_SINTESE, catalogoParaLLM, lerSintese, montarCatalogo, ressalvasPendentes, verificarAfirmacoes } from "../../conversa/afirmacoes.js";
 import { citadoNaMensagem, numeroNaMensagem, verificarNumeros } from "../../conversa/fatos.js";
 import { ACOES, ESQUEMA_INTERPRETACAO, LIMITES_CONVERSA, ROTAS_CONSULTA, validarInterpretacao } from "../../conversa/intencoes.js";
 import { TEXTOS, textoAcaoProposta, textoAjuda, textoDosFatos, textoEscolha, textoNaoEncontrado } from "../../conversa/respostas.js";
@@ -119,31 +122,51 @@ export async function conversar(contexto, { mensagem, historico = [], estado = {
 
     const limitacoes = [...new Set(resposta.resultados.flatMap((r) => r.limitacoes ?? []))];
     const anexos = await montarAnexos(contexto, resposta.resultados);
-    const fatos = resposta.resultados.map((r) => ({ intencao: r.intencao, ...(r.sabor && { sabor: r.sabor }), status: r.status, fatos: r.fatos ?? null, textos: r.textos ?? [], limitacoes: r.limitacoes ?? [] }));
+    const catalogo = montarCatalogo(resposta.resultados);
     const template = () => textoDosFatos(resposta.resultados);
 
     const t1 = Date.now();
     let texto;
     let origemTexto = "LLM";
+    let aceitas = [];
     try {
       const r = await chamarLLM("SINTESE", {
         sistema: PROMPT_SINTESE,
-        mensagens: [{ papel: "usuario", conteudo: `Pergunta do gestor: ${mensagem}\n\nFatos dos agentes (JSON):\n${JSON.stringify(fatos)}` }],
-        maxTokens: 800,
+        mensagens: [{ papel: "usuario", conteudo: `Pergunta do gestor: ${mensagem}\n\nCatálogo de fatos dos agentes (id | intenção | entidade | métrica | valor | unidade):\n${catalogoParaLLM(catalogo)}` }],
+        formato: ESQUEMA_SINTESE,
+        maxTokens: 900,
       });
-      texto = r.tipo === "texto" ? r.texto.trim() : "";
-      const verificacao = verificarNumeros(texto, fatos, [mensagem]);
-      registro.verificacaoFatos = { aplicada: true, ...verificacao };
-      if (!texto || !verificacao.aprovada) {
-        texto = template();
-        origemTexto = "TEMPLATE";
-        registro.verificacaoFatos.motivoTemplate = texto ? "NUMEROS_NAO_SUPORTADOS" : "SINTESE_VAZIA";
+      const lida = r.tipo === "texto" ? lerSintese(r.texto) : { valida: false, erro: "TOOL_CALL_NAO_PERMITIDA" };
+      if (!lida.valida) {
+        registro.verificacaoFatos = { aplicada: true, fatosNoCatalogo: catalogo.fatos.length, motivoTemplate: `SINTESE_${lida.erro}` };
+      } else {
+        const v = verificarAfirmacoes(lida.afirmacoes, catalogo, { extras: [mensagem] });
+        aceitas = v.aceitas;
+        registro.verificacaoFatos = {
+          aplicada: true,
+          fatosNoCatalogo: catalogo.fatos.length,
+          afirmacoes: lida.afirmacoes.length + lida.excedentes,
+          aceitas: aceitas.map((a) => ({ factIds: a.factIds })),
+          descartadas: v.descartadas.map((d) => ({ motivo: d.motivo, ...(d.detalhe && { detalhe: d.detalhe }), factIds: d.factIds, texto: truncar(d.texto, 200) })),
+          ...(lida.excedentes && { excedentesIgnoradas: lida.excedentes }),
+        };
+        if (aceitas.length) texto = aceitas.map((a) => a.texto.trim()).join(" ");
+        else registro.verificacaoFatos.motivoTemplate = "NENHUMA_AFIRMACAO_VALIDA";
       }
     } catch (e) {
       if (!(e instanceof ErroLLM)) throw e;
-      texto = template(); // os especialistas já rodaram: não são repetidos
+      registro.verificacaoFatos = { aplicada: false, motivoTemplate: `LLM_${e.codigo}` }; // os especialistas já rodaram: não são repetidos
+    }
+    if (!texto) {
+      texto = template();
       origemTexto = "TEMPLATE";
-      registro.verificacaoFatos = { aplicada: false, motivoTemplate: `LLM_${e.codigo}` };
+      aceitas = [];
+    }
+    // fatos críticos não numéricos nunca somem da resposta
+    const ressalvas = ressalvasPendentes(catalogo, aceitas);
+    if (ressalvas.length) {
+      texto = `${texto}\n\n${ressalvas.map((x) => `Ressalva: ${x.texto}`).join("\n")}`;
+      registro.verificacaoFatos = { ...registro.verificacaoFatos, ressalvas: ressalvas.map((x) => x.codigo) };
     }
     registro.metricas.sinteseMs = Date.now() - t1;
     return responder(texto, origemTexto, { anexos, limitacoes, degradado: !resposta.completo });

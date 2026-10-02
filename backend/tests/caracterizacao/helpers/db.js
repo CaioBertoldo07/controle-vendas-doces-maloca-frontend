@@ -11,6 +11,9 @@ export const prisma = new PrismaClient({ datasourceUrl: url });
 
 // Ordem respeita as chaves estrangeiras (filhos antes dos pais).
 const TABELAS = [
+  // Rotinas e sinais (Etapa 6)
+  "execucaoRotina",
+  "sinalAnalise",
   // Conversa do Atendimento (Etapa 5)
   "mensagemConversa",
   "conversaAgente",

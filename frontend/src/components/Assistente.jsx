@@ -23,7 +23,7 @@ const gravarConversa = (id) => { try { id ? localStorage.setItem(CHAVE_CONVERSA,
 const brl = (v) => Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
 const ORIGEM = {
-  LLM: 'Redigido pelo assistente com dados dos agentes (números conferidos)',
+  LLM: 'Redigido pelo assistente; cada afirmação foi conferida com os dados dos agentes',
   TEMPLATE: 'Resposta automática montada com os dados dos agentes',
   SISTEMA: 'Mensagem do sistema',
 };
