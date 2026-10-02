@@ -8,7 +8,7 @@
  *   - KNOWN_BEHAVIOR: na edição, valores "falsy" (ex.: 0) são ignorados.
  */
 import { erro } from "../lib/erros.js";
-import { agoraCivil, intervaloDoMes, lerDataCivil, mesAtualCivil, nomeDoMes } from "../lib/periodos.js";
+import { agoraCivil, intervaloDoMes, intervaloEntreDatas, lerDataCivil, mesAtualCivil, nomeDoMes } from "../lib/periodos.js";
 import { prisma } from "../lib/prisma.js";
 
 /** Converte a quantidade comprada para a unidade base do insumo. Pura. */
@@ -214,5 +214,23 @@ export async function resumoCustos({ mes, ano } = {}) {
     totalItens: custos.length,
     porCategoria,
     meses,
+  };
+}
+
+/**
+ * Custos lançados entre dois dias civis (inclusive): total e por categoria,
+ * agregados no banco (Etapa 3, Agente de Inteligência; custo AGREGADO).
+ */
+export async function totalCustosPeriodo({ dataInicio, dataFim } = {}) {
+  const { inicio, fimExclusivo } = intervaloEntreDatas(dataInicio, dataFim);
+  const where = { data: { gte: inicio, lt: fimExclusivo } };
+  const [total, categorias] = await Promise.all([
+    prisma.custo.aggregate({ where, _sum: { valorTotal: true }, _count: { _all: true } }),
+    prisma.custo.groupBy({ by: ["categoria"], where, _sum: { valorTotal: true }, _count: { _all: true }, orderBy: { categoria: "asc" } }),
+  ]);
+  return {
+    quantidade: total._count._all,
+    valorTotal: Number(total._sum.valorTotal ?? 0),
+    porCategoria: categorias.map((c) => ({ categoria: c.categoria, quantidade: c._count._all, valorTotal: Number(c._sum.valorTotal ?? 0) })),
   };
 }

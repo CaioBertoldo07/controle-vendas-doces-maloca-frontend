@@ -10,6 +10,7 @@ import {
   consultarResumoProducao,
   consultarSaldoMateriasPrimas,
 } from "./estoqueProducao.js";
+import { consultarCustosPeriodo, consultarVendasDiariasPorSabor } from "./indicadores.js";
 import { consultarRankingSabores, consultarRecebiveis, consultarVendasPeriodo } from "./vendas.js";
 
 const TODAS = [
@@ -23,6 +24,8 @@ const TODAS = [
   consultarEstatisticasCliente,
   consultarReceitas,
   consultarProducaoVendasPeriodo,
+  consultarVendasDiariasPorSabor,
+  consultarCustosPeriodo,
   proporAcao,
 ];
 

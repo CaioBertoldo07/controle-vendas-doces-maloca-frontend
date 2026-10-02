@@ -26,11 +26,13 @@ async function cenarioVendas() {
 
 describe("catálogo", () => {
   // Etapa 2: +consultarReceitas e +consultarProducaoVendasPeriodo (Agente de Estoque).
-  it("11 tools; só proporAcao escreve; todas com JSON Schema estrito para o LLM", () => {
+  // Etapa 3: +consultarVendasDiariasPorSabor e +consultarCustosPeriodo (Agente de Inteligência).
+  it("13 tools; só proporAcao escreve; todas com JSON Schema estrito para o LLM", () => {
     expect([...CATALOGO.keys()]).toEqual([
       "consultarVendasPeriodo", "consultarRankingSabores", "consultarRecebiveis", "consultarEstoqueAcabado",
       "consultarSaldoMateriasPrimas", "consultarResumoProducao", "calcularNecessidadesProducao",
-      "consultarEstatisticasCliente", "consultarReceitas", "consultarProducaoVendasPeriodo", "proporAcao",
+      "consultarEstatisticasCliente", "consultarReceitas", "consultarProducaoVendasPeriodo",
+      "consultarVendasDiariasPorSabor", "consultarCustosPeriodo", "proporAcao",
     ]);
     expect([...CATALOGO.values()].filter((t) => t.escrita).map((t) => t.nome)).toEqual(["proporAcao"]);
     for (const t of CATALOGO.values()) {
@@ -173,6 +175,14 @@ describe("arquitetura (verificação estática do código)", () => {
       expect(imps.filter((i) => /controllers|lib\/prisma|@prisma/.test(i)), arq).toEqual([]);
     }
     expect(importacoes(fs.readFileSync(path.resolve("src/agents/tools/vendas.js"), "utf8"))).toContain("../../services/vendasService.js");
+  });
+
+  it("Estoque e Inteligência não se importam: a cooperação passa só pelo runtime (Etapa 3)", () => {
+    for (const [dir, proibido] of [["src/agents/agentes/estoque", /inteligencia/], ["src/agents/agentes/inteligencia", /estoque/]]) {
+      for (const [arq, src] of ler(dir)) {
+        expect(importacoes(src).filter((i) => proibido.test(i)), `${dir}/${arq}`).toEqual([]);
+      }
+    }
   });
 
   it("agentes e LLM não importam Prisma, services nem controllers (só falam pelo contexto)", () => {

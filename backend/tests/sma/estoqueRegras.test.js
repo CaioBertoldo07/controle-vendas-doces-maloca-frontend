@@ -168,13 +168,30 @@ describe("recomendações por regra", () => {
   });
 });
 
-describe("contrato DEMANDA_MEDIA (Estoque → Inteligência) preparado para a Etapa 3", () => {
-  it("valida pedido e resposta; o método é média simples, não previsão", () => {
+// Etapa 3: o contrato preparado na Etapa 2 foi formalizado (janela em semanas completas, metodologia explícita).
+describe("contrato DEMANDA_MEDIA (Estoque → Inteligência)", () => {
+  const sabor = { saborId: 1, sabor: "Coco", qualidade: "SUFICIENTE", primeiraVenda: "2026-03-01", semanasObservadas: 4, unidadesVendidas: 120, diasComVenda: 12, mediaSemanal: 30, mediaDiaria: 4.29 };
+  const resposta = {
+    dataReferencia: "2026-09-30",
+    metodologia: {
+      tipo: "MEDIA_HISTORICA_RECENTE", janelaSemanas: 4, unidade: "UNIDADES_POR_SEMANA", semana: "DOMINGO_A_SABADO",
+      periodo: { dataInicio: "2026-08-30", dataFim: "2026-09-26" }, semanaParcialExcluida: { dataInicio: "2026-09-27", dataFim: "2026-09-30" },
+      criterioSuficiencia: "x", observacao: "y",
+    },
+    sabores: [sabor],
+  };
+
+  it("pedido: janela de 4 a 12 semanas, dia existente, sabores opcionais; resposta: método de média histórica, não previsão", () => {
     expect(DEMANDA_MEDIA).toMatchObject({ tipo: "DEMANDA_MEDIA", de: "estoque", para: "inteligencia" });
-    expect(DEMANDA_MEDIA.pedido.safeParse({ dataReferencia: "2026-09-30", janelaDias: 30 }).success).toBe(true);
-    expect(DEMANDA_MEDIA.pedido.safeParse({ dataReferencia: "2026-09-30", janelaDias: 400 }).success).toBe(false);
-    const resposta = { dataReferencia: "2026-09-30", janelaDias: 30, metodo: "MEDIA_SIMPLES_HISTORICA", sabores: [{ saborId: 1, sabor: "Coco", unidadesVendidas: 90, diasComVenda: 12, mediaDiaria: 3 }] };
+    expect(DEMANDA_MEDIA.pedido.safeParse({}).success).toBe(true);
+    expect(DEMANDA_MEDIA.pedido.safeParse({ dataReferencia: "2026-09-30", janelaSemanas: 4, saborIds: [1, 2] }).success).toBe(true);
+    for (const invalido of [{ janelaSemanas: 3 }, { janelaSemanas: 13 }, { janelaSemanas: 4.5 }, { dataReferencia: "2026-02-30" }, { dataReferencia: "30/09/2026" }, { saborIds: [] }, { extra: 1 }]) {
+      expect(DEMANDA_MEDIA.pedido.safeParse(invalido).success, JSON.stringify(invalido)).toBe(false);
+    }
     expect(DEMANDA_MEDIA.resposta.safeParse(resposta).success).toBe(true);
-    expect(DEMANDA_MEDIA.resposta.safeParse({ ...resposta, metodo: "REGRESSAO" }).success).toBe(false);
+    expect(DEMANDA_MEDIA.resposta.safeParse({ ...resposta, metodologia: { ...resposta.metodologia, tipo: "PREVISAO" } }).success).toBe(false);
+    // sem amostra suficiente não pode haver média (nem o contrário)
+    expect(DEMANDA_MEDIA.resposta.safeParse({ ...resposta, sabores: [{ ...sabor, qualidade: "DADOS_INSUFICIENTES" }] }).success).toBe(false);
+    expect(DEMANDA_MEDIA.resposta.safeParse({ ...resposta, sabores: [{ ...sabor, mediaSemanal: null, mediaDiaria: null }] }).success).toBe(false);
   });
 });

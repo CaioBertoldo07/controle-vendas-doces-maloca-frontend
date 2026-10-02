@@ -11,8 +11,10 @@ import {
   civilParaInstante,
   deslocarDiaISO,
   diaCivilISO,
+  diaDaSemanaISO,
   formatarDiaCivil,
   hojeCivilISO,
+  inicioDaSemanaISO,
   intervaloDaSemana,
   intervaloDoDia,
   intervaloDoMes,
@@ -113,6 +115,17 @@ describe("dias civis em texto (Etapa 2: janelas do Agente de Estoque)", () => {
     expect(deslocarDiaISO("2026-12-31", 1)).toBe("2027-01-01");
     expect(deslocarDiaISO("2026-09-30", -29)).toBe("2026-09-01");
     expect(hojeCivilISO()).toBe(new Intl.DateTimeFormat("en-CA", { timeZone: "America/Manaus" }).format(new Date()));
+  });
+});
+
+describe("semana civil em texto (Etapa 3: séries semanais do Agente de Inteligência)", () => {
+  it("diaDaSemanaISO e inicioDaSemanaISO seguem intervaloDaSemana (domingo a sábado), inclusive na virada do ano", () => {
+    expect(["2026-09-27", "2026-09-30", "2026-10-03"].map(diaDaSemanaISO)).toEqual([0, 3, 6]);
+    expect(inicioDaSemanaISO("2026-09-30")).toBe("2026-09-27");
+    expect(inicioDaSemanaISO("2026-09-27")).toBe("2026-09-27");
+    expect(inicioDaSemanaISO("2026-10-03")).toBe("2026-09-27");
+    expect(inicioDaSemanaISO("2027-01-01")).toBe("2026-12-27");
+    expect(inicioDaSemanaISO("2026-09-30")).toBe(diaCivilISO(intervaloDaSemana(civil(2026, 9, 30, 23, 59)).inicio));
   });
 });
 

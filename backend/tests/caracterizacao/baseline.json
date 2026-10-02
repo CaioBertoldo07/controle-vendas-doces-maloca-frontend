@@ -1,11 +1,17 @@
 {
   "descricao": "Baseline da suíte de caracterização. Só altere de forma consciente, registrando o motivo em docs/tcc.",
-  "testes": 387,
-  "arquivos": 23,
+  "testes": 457,
+  "arquivos": 26,
   "pendentesPermitidos": 0,
-  "definidaEm": "2026-10-01",
-  "motivo": "Etapa 2: +43 testes do Agente de Estoque (estoqueRegras 26, estoqueAgente 12, estoqueHttp 4 em tests/sma; +1 em periodos.test.js). Nenhum teste removido; 5 testes SMA da Etapa 1 ajustados por evolução de contrato interno (docs/tcc/etapa-2-agente-estoque.md)",
+  "definidaEm": "2026-10-02",
+  "motivo": "Etapa 3: +70 testes do Agente de Inteligência e da cooperação Estoque ↔ Inteligência (inteligenciaCalculos 43, inteligenciaAgente 17, cooperacao 8 em tests/sma; +1 arquitetura em tools.test.js; +1 em periodos.test.js). Nenhum teste removido; 4 testes da Etapa 2 ajustados por evolução deliberada (cooperação real e contrato DEMANDA_MEDIA formalizado) (docs/tcc/etapa-3-agente-inteligencia.md)",
   "historico": [
+    {
+      "testes": 387,
+      "arquivos": 23,
+      "definidaEm": "2026-10-01",
+      "motivo": "Etapa 2: +43 testes do Agente de Estoque (docs/tcc/etapa-2-agente-estoque.md)"
+    },
     {
       "testes": 344,
       "arquivos": 20,

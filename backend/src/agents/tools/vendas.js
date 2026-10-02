@@ -32,6 +32,11 @@ export const consultarVendasPeriodo = definirTool({
       porDia: Object.entries(t.porDia).map(([dia, unidades]) => ({ dia, unidades })),
     };
   },
+  // Etapa 3: a auditoria guarda os totais, não a lista de clientes nem a de dias.
+  resumir: (d) => ({
+    periodo: d.periodo, totalVendas: d.totalVendas, unidades: d.unidades, valorTotal: d.valorTotal,
+    valorPago: d.valorPago, valorPendente: d.valorPendente, clientes: d.porCliente.length, dias: d.porDia.length,
+  }),
 });
 
 export const consultarRankingSabores = definirTool({

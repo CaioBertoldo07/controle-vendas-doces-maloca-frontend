@@ -258,6 +258,80 @@ export function alertasRitmo(janelas) {
   return alertas;
 }
 
+// ---------------------------------------------------------------- demanda média recente (Etapa 3)
+//
+// A demanda vem do Agente de Inteligência (mensagem DEMANDA_MEDIA). Ela
+// ENRIQUECE o diagnóstico: compara a produção das mesmas semanas com a demanda
+// e dá escala às divergências. Não gera alerta novo nem quantidade a produzir
+// (estoque não reconciliado, sem estoque mínimo, sem receitas reais).
+
+/** Sabores a consultar: os que tiveram produção ou venda na janela de 30 dias. */
+export function saboresParaDemanda(ritmo) {
+  const j30 = ritmo.janelas.find((j) => j.dias === 30);
+  if (!j30?.disponivel) return [];
+  return j30.sabores.filter((s) => s.produzido > 0 || s.vendido > 0).map((s) => s.saborId).sort((a, b) => a - b);
+}
+
+const fmt = (n) => n.toLocaleString("pt-BR", { maximumFractionDigits: 1 });
+const dm = (d) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
+
+/**
+ * Produção média semanal (mesmas semanas da demanda) × demanda média recente,
+ * por sabor. Mesmos limiares da comparação de ritmo (0,9 e 1,5). Sem amostra
+ * suficiente ou sem venda na janela: SEM_CONCLUSAO.
+ */
+export function compararProducaoDemanda(resposta, producao) {
+  const { janelaSemanas: n, periodo } = resposta.metodologia;
+  const produzido = new Map((producao?.sabores ?? []).map((s) => [s.saborId, s.produzido]));
+  const janela = `${n} semanas completas, ${dm(periodo.dataInicio)} a ${dm(periodo.dataFim)}`;
+  return resposta.sabores.map((s) => {
+    const base = { saborId: s.saborId, sabor: s.sabor, qualidade: s.qualidade, mediaSemanal: s.mediaSemanal };
+    if (s.qualidade !== "SUFICIENTE") {
+      return { ...base, situacao: "SEM_CONCLUSAO", motivo: s.qualidade,
+        texto: `${s.sabor} não tem ${n} semanas completas de histórico de vendas: a demanda média não é usada para conclusões.` };
+    }
+    if (!producao) return { ...base, situacao: "SEM_CONCLUSAO", motivo: "FALHA_CONSULTA_PRODUCAO", texto: `A demanda média recente de ${s.sabor} é ${fmt(s.mediaSemanal)} un./semana (${janela}).` };
+    const prodSemanal = Number(((produzido.get(s.saborId) ?? 0) / n).toFixed(2));
+    const textoDemanda = `A demanda média recente de ${s.sabor} é ${fmt(s.mediaSemanal)} un./semana (${janela}).`;
+    if (s.mediaSemanal === 0) {
+      return { ...base, producaoMediaSemanal: prodSemanal, situacao: "SEM_CONCLUSAO", motivo: "SEM_VENDAS_NA_JANELA", texto: `${s.sabor} não teve vendas nas ${janela}.` };
+    }
+    const razao = Number((prodSemanal / s.mediaSemanal).toFixed(3));
+    const situacao = razao < LIMITES.RITMO_RAZAO_ABAIXO ? "PRODUCAO_ABAIXO_DA_DEMANDA" : razao > LIMITES.RITMO_RAZAO_ACIMA ? "PRODUCAO_ACIMA_DA_DEMANDA" : "ALINHADA";
+    const sentido = { PRODUCAO_ABAIXO_DA_DEMANDA: "abaixo desse ritmo", PRODUCAO_ACIMA_DA_DEMANDA: "acima desse ritmo", ALINHADA: "alinhada a esse ritmo" }[situacao];
+    return {
+      ...base, producaoMediaSemanal: prodSemanal, razaoProducaoDemanda: razao, situacao,
+      texto: `${textoDemanda} A produção no mesmo período foi de ${fmt(prodSemanal)} un./semana, ${sentido}.`,
+    };
+  });
+}
+
+/** Qualidade da seção de demanda para o diagnóstico de qualidade dos dados. */
+export function qualidadeDemanda(demanda) {
+  if (!demanda.disponivel) return { confiabilidade: "INDISPONIVEL", motivo: demanda.motivo };
+  const suficientes = demanda.sabores.filter((s) => s.qualidade === "SUFICIENTE").length;
+  return {
+    confiabilidade: suficientes === demanda.sabores.length ? "UTILIZAVEL" : suficientes > 0 ? "PARCIAL" : "DADOS_INSUFICIENTES",
+    saboresComMedia: suficientes,
+    sabores: demanda.sabores.length,
+  };
+}
+
+/** Divergência histórica (saldo negativo) expressa em semanas de demanda média recente: escala, não estoque. */
+export function contextualizarDivergencias(alertas, comparacao) {
+  const demanda = new Map(comparacao.filter((c) => c.qualidade === "SUFICIENTE" && c.mediaSemanal > 0).map((c) => [c.saborId, c.mediaSemanal]));
+  return alertas
+    .filter((a) => (a.tipo === ALERTA.SALDO_NEGATIVO || a.subtipo === "VENDA_SEM_PRODUCAO") && demanda.has(a.entidade.id))
+    .map((a) => {
+      const media = demanda.get(a.entidade.id);
+      const semanas = Number((Math.abs(a.dados.saldo) / media).toFixed(2));
+      return {
+        saborId: a.entidade.id, sabor: a.entidade.nome, saldo: a.dados.saldo, mediaSemanal: media, semanasDeDemanda: semanas,
+        texto: `A divergência histórica de ${a.entidade.nome} (${a.dados.saldo} un.) equivale a ${fmt(semanas)} semana(s) da demanda média recente.`,
+      };
+    });
+}
+
 // ---------------------------------------------------------------- recomendações
 
 /**

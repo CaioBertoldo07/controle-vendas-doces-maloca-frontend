@@ -23,7 +23,8 @@ const analisar = (rt = runtimeTeste(), dados = { dataReferencia: REF }) => rt.ex
 const vender = (saborId, quantidade, d) => criarVenda({ clienteId: cliente.id, itens: [{ saborId, quantidade }], data: dia(d) });
 const produzir = (saborId, quantidade, d) => criarProducao({ itens: [{ saborId, quantidade }], data: dia(d) });
 const alertas = (saida) => saida.alertas.map((a) => [a.tipo, a.subtipo ?? null, a.prioridade, a.entidade.nome ?? null]);
-const contagemDominio = async () => Promise.all([prisma.venda.count(), prisma.producao.count(), prisma.movimentacaoMateriaPrima.count(), prisma.custo.count(), prisma.acaoProposta.count(), prisma.mensagemAgente.count()]);
+// Etapa 3: mensagens saíram desta contagem (o Estoque passou a pedir DEMANDA_MEDIA à Inteligência; ver as asserções da cooperação).
+const contagemDominio = async () => Promise.all([prisma.venda.count(), prisma.producao.count(), prisma.movimentacaoMateriaPrima.count(), prisma.custo.count(), prisma.acaoProposta.count()]);
 
 /** Cenário acadêmico controlado (docs/tcc/etapa-2-agente-estoque.md §16). */
 async function cenarioAcademico() {
@@ -111,7 +112,14 @@ describe("cenário acadêmico controlado (Tradicional × Maracujá, sem receitas
     expect(contagem).toMatchObject({ agente: "estoque", status: "ABERTA", titulo: "Realizar contagem física do estoque acabado" });
     expect(contagem.dados).toMatchObject({ sabores: [{ saborId: tradicional.id, sabor: "Tradicional", saldo: -20 }], controle: { chave: "CONTAGEM_FISICA|estoque-acabado", ocorrencias: 1 } });
 
-    expect(await contagemDominio()).toEqual(antes); // nenhuma escrita de domínio, nenhuma ação, nenhuma mensagem
+    expect(await contagemDominio()).toEqual(antes); // nenhuma escrita de domínio, nenhuma ação
+    // Etapa 3: histórico de 1 semana → a Inteligência responde sem média (DADOS_INSUFICIENTES / SEM_HISTORICO) e o Estoque não conclui nada com ela
+    expect(saida.demanda).toMatchObject({ solicitada: true, disponivel: true });
+    expect(saida.demanda.sabores.map((s) => [s.sabor, s.qualidade, s.situacao, s.mediaSemanal])).toEqual([
+      ["Tradicional", "DADOS_INSUFICIENTES", "SEM_CONCLUSAO", null], ["Maracujá", "SEM_HISTORICO", "SEM_CONCLUSAO", null],
+    ]);
+    expect(saida.demanda.divergencias).toEqual([]);
+    expect(saida.qualidade.demandaMediaRecente).toMatchObject({ confiabilidade: "DADOS_INSUFICIENTES", saboresComMedia: 0 });
     expect(await prisma.chamadaTool.count({ where: { tool: "calcularNecessidadesProducao" } })).toBe(0); // sem receita, sem MRP
   });
 });
@@ -231,7 +239,9 @@ describe("auditoria da análise", () => {
     expect(ex.chamadasTool[3].entrada).toEqual({ dataInicio: "2026-09-24", dataFim: REF });
     expect(ex.recomendacoes.map((r) => r.tipo)).toEqual(["CONTAGEM_FISICA", "CADASTRAR_RECEITAS"]);
     expect(ex.saida.resumo).toMatchObject({ alertas: 6, recomendacoes: 2 });
-    expect(ex.mensagens).toEqual([]); // não simula cooperação com Inteligência
+    // Etapa 3: cooperação real com a Inteligência (antes: nenhuma mensagem)
+    expect(ex.mensagens.map((m) => [m.agenteDestino, m.tipo, m.status])).toEqual([["inteligencia", "DEMANDA_MEDIA", "RESPONDIDA"]]);
+    expect(ex.filhas.map((f) => [f.agente, f.tipoExecucao, f.status])).toEqual([["inteligencia", "DEMANDA_MEDIA", "SUCESSO"]]);
 
     const rt = runtimeTeste();
     expect((await rt.executarAgente("estoque", { tipo: "DIAGNOSTICO" })).saida.toolsOk).toBe(true);

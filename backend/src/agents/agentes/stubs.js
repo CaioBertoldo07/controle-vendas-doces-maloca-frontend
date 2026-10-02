@@ -1,5 +1,6 @@
-// Agentes especializados ainda STUBS TÉCNICOS (Etapa 1): vendas, inteligência
-// e atendimento. O de estoque virou agente real na Etapa 2 (agentes/estoque).
+// Agentes especializados ainda STUBS TÉCNICOS (Etapa 1): vendas e atendimento.
+// Estoque virou agente real na Etapa 2 (agentes/estoque) e Inteligência na
+// Etapa 3 (agentes/inteligencia).
 // Os stubs validam runtime, tools,
 // mensagens e LLM; não têm regra de domínio (que vem na Etapa 2 em diante).
 //   PING        → resposta imediata, sem tools
@@ -45,13 +46,6 @@ export const vendas = stubTecnico({
   descricao: "Agente de Vendas (stub técnico): vendas por período, recebíveis, clientes e ranking.",
   tools: ["consultarVendasPeriodo", "consultarRecebiveis", "consultarRankingSabores", "consultarEstatisticasCliente", "proporAcao"],
   diagnostico: ["consultarRecebiveis", "consultarRankingSabores"],
-});
-
-export const inteligencia = stubTecnico({
-  nome: "inteligencia",
-  descricao: "Agente de Inteligência (stub técnico): indicadores de produção e vendas.",
-  tools: ["consultarResumoProducao", "consultarVendasPeriodo", "consultarEstoqueAcabado"],
-  diagnostico: ["consultarResumoProducao"],
 });
 
 /**

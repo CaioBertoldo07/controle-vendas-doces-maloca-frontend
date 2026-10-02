@@ -152,6 +152,15 @@ export function deslocarDiaISO(diaISO, dias) {
   return diaCivilISO(civil(a, m, d + dias));
 }
 
+/** Dia da semana de um dia civil "AAAA-MM-DD" (0 = domingo … 6 = sábado). */
+export function diaDaSemanaISO(diaISO) {
+  const [a, m, d] = diaISO.split("-").map(Number);
+  return civil(a, m, d).getUTCDay();
+}
+
+/** Domingo da semana civil (domingo a sábado, como intervaloDaSemana) que contém o dia. */
+export const inicioDaSemanaISO = (diaISO) => deslocarDiaISO(diaISO, -diaDaSemanaISO(diaISO));
+
 /** Ano e mês correntes em Manaus. */
 export function mesAtualCivil() {
   const agora = agoraCivil();

@@ -443,3 +443,49 @@ export async function relatorioMensal({ ano } = {}) {
     meses,
   };
 }
+
+/**
+ * Piso de data plausível de venda. O histórico real tem uma venda datada no
+ * ano 0206 (Etapa 0.2, P1): ela não pode passar por "primeira venda" de um
+ * sabor, senão um sabor novo pareceria vendido há séculos.
+ */
+export const DATA_MINIMA_PLAUSIVEL = "2020-01-01";
+
+/** Date civil → "AAAA-MM-DD HH:MM:SS" (relógio de Manaus) para parâmetro SQL de DATETIME. */
+const datetimeSql = (dataCivil) => dataCivil.toISOString().slice(0, 19).replace("T", " ");
+
+/**
+ * Unidades vendidas por dia civil e sabor entre dois dias (inclusive),
+ * agregadas no banco (GROUP BY), e o dia da primeira venda de cada sabor até
+ * dataFim (Etapa 3, Agente de Inteligência). Venda.data guarda o relógio de
+ * Manaus (Etapa 0.5): DATE_FORMAT dá o dia civil sem depender do fuso do
+ * processo nem da sessão MySQL. Devolve só agregados, nunca vendas ou clientes.
+ * A primeira venda só considera datas plausíveis (DATA_MINIMA_PLAUSIVEL); as
+ * implausíveis são contadas à parte, como sinal de qualidade.
+ */
+export async function vendasDiariasPorSabor({ dataInicio, dataFim } = {}) {
+  const { inicio, fimExclusivo } = intervaloEntreDatas(dataInicio, dataFim);
+  const [ini, fim] = [datetimeSql(inicio), datetimeSql(fimExclusivo)];
+  const piso = `${DATA_MINIMA_PLAUSIVEL} 00:00:00`;
+  const [dias, primeiras, sabores, implausiveis] = await Promise.all([
+    prisma.$queryRaw`
+      SELECT DATE_FORMAT(v.data, '%Y-%m-%d') AS dia, vs.saborId AS saborId, SUM(vs.quantidade) AS unidades
+      FROM venda_sabores vs JOIN vendas v ON v.id = vs.vendaId
+      WHERE v.data >= ${ini} AND v.data < ${fim}
+      GROUP BY dia, vs.saborId
+      ORDER BY dia, vs.saborId`,
+    prisma.$queryRaw`
+      SELECT vs.saborId AS saborId, DATE_FORMAT(MIN(v.data), '%Y-%m-%d') AS primeiraVenda
+      FROM venda_sabores vs JOIN vendas v ON v.id = vs.vendaId
+      WHERE v.data >= ${piso} AND v.data < ${fim}
+      GROUP BY vs.saborId`,
+    prisma.sabor.findMany({ select: { id: true, nome: true, ativo: true }, orderBy: { nome: "asc" } }),
+    prisma.$queryRaw`SELECT COUNT(*) AS n FROM vendas WHERE data < ${piso}`,
+  ]);
+  const primeira = new Map(primeiras.map((p) => [Number(p.saborId), p.primeiraVenda]));
+  return {
+    sabores: sabores.map((s) => ({ ...s, primeiraVenda: primeira.get(s.id) ?? null })),
+    dias: dias.map((d) => ({ dia: d.dia, saborId: Number(d.saborId), unidades: Number(d.unidades) })),
+    vendasComDataImplausivel: Number(implausiveis[0].n),
+  };
+}
