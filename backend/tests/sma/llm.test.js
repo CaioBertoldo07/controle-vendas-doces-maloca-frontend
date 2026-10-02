@@ -16,8 +16,10 @@ describe("provedor fake e ciclo de tool calling", () => {
     const r = await perguntar(runtimeTeste({ provedorLLM: llm }));
     expect(r.saida).toEqual({ agente: "estoque", resposta: "Tudo certo.", passos: 1, chamadas: [] });
     const [req] = llm.requisicoes;
+    // Etapa 2: a allowlist do Agente de Estoque ganhou consultarReceitas e consultarProducaoVendasPeriodo
     expect(req.tools.map((t) => t.nome)).toEqual([
-      "consultarEstoqueAcabado", "consultarSaldoMateriasPrimas", "calcularNecessidadesProducao", "consultarResumoProducao", "proporAcao",
+      "consultarEstoqueAcabado", "consultarSaldoMateriasPrimas", "consultarReceitas", "consultarProducaoVendasPeriodo",
+      "calcularNecessidadesProducao", "consultarResumoProducao", "proporAcao",
     ]);
     expect(req.tools.every((t) => Object.keys(t).sort().join() === "descricao,nome,parametros")).toBe(true);
     expect(req.mensagens).toEqual([{ papel: "usuario", conteudo: "Como está o estoque?" }]);

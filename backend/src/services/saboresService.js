@@ -140,3 +140,15 @@ export async function salvarReceita(id, { rendimentoBase, itens } = {}) {
 
   return { rendimentoBase: saborAtualizado.rendimentoBase, itens: itensAtualizados };
 }
+
+/**
+ * Receita de todos os sabores ativos numa consulta só (Etapa 2, tools dos
+ * agentes): rendimento e itens com a matéria-prima.
+ */
+export async function listarReceitas() {
+  return prisma.sabor.findMany({
+    where: { ativo: true },
+    orderBy: { nome: "asc" },
+    include: { receita: { include: { materiaPrima: true }, orderBy: { id: "asc" } } },
+  });
+}

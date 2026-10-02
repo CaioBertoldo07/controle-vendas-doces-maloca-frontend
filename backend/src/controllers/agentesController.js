@@ -3,6 +3,7 @@
 // genéricos; o detalhe fica na auditoria (ExecucaoAgente.erro).
 import * as servicoAcoes from "../agents/acoes/servicoAcoes.js";
 import * as consultas from "../agents/consultas.js";
+import { STATUS_RECOMENDACAO, alterarStatus } from "../agents/runtime/recomendacoes.js";
 import { runtimePadrao } from "../agents/index.js";
 import { ErroDominio, responderErroDominio } from "../lib/erros.js";
 
@@ -42,6 +43,15 @@ export const buscarExecucao = responder(async (req, res) => {
 
 export const listarRecomendacoes = responder(async (req, res) => {
   res.json(await consultas.listarRecomendacoes(req.query));
+});
+
+/** Decisão do gestor sobre uma recomendação ABERTA. */
+export const resolverRecomendacao = responder(async (req, res) => {
+  res.json(await alterarStatus(req.params.id, STATUS_RECOMENDACAO.RESOLVIDA));
+});
+
+export const ignorarRecomendacao = responder(async (req, res) => {
+  res.json(await alterarStatus(req.params.id, STATUS_RECOMENDACAO.IGNORADA));
 });
 
 export const listarAcoes = responder(async (req, res) => {

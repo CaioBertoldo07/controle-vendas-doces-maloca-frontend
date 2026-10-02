@@ -1,4 +1,6 @@
-// Agentes especializados (Etapa 1): STUBS TÉCNICOS. Validam runtime, tools,
+// Agentes especializados ainda STUBS TÉCNICOS (Etapa 1): vendas, inteligência
+// e atendimento. O de estoque virou agente real na Etapa 2 (agentes/estoque).
+// Os stubs validam runtime, tools,
 // mensagens e LLM; não têm regra de domínio (que vem na Etapa 2 em diante).
 //   PING        → resposta imediata, sem tools
 //   DIAGNOSTICO → chama as tools de diagnóstico e devolve se funcionaram
@@ -37,13 +39,6 @@ function stubTecnico({ nome, descricao, tools, diagnostico }) {
     },
   };
 }
-
-export const estoque = stubTecnico({
-  nome: "estoque",
-  descricao: "Agente de Estoque (stub técnico): estoque acabado, matéria-prima e necessidades de produção.",
-  tools: ["consultarEstoqueAcabado", "consultarSaldoMateriasPrimas", "calcularNecessidadesProducao", "consultarResumoProducao", "proporAcao"],
-  diagnostico: ["consultarEstoqueAcabado", "consultarSaldoMateriasPrimas"],
-});
 
 export const vendas = stubTecnico({
   nome: "vendas",

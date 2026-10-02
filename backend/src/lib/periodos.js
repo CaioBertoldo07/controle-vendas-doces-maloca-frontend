@@ -140,6 +140,18 @@ export function intervaloEntreDatas(dataInicio, dataFim) {
   return { inicio: intervaloDoDia(ini).inicio, fimExclusivo: intervaloDoDia(fim).fimExclusivo };
 }
 
+/** "AAAA-MM-DD" do dia civil de uma data civil. */
+export const diaCivilISO = (dataCivil) => dataCivil.toISOString().slice(0, 10);
+
+/** "AAAA-MM-DD" de hoje em Manaus. */
+export const hojeCivilISO = () => diaCivilISO(agoraCivil());
+
+/** Dia civil deslocado em n dias ("2026-03-01", -1 → "2026-02-28"). */
+export function deslocarDiaISO(diaISO, dias) {
+  const [a, m, d] = diaISO.split("-").map(Number);
+  return diaCivilISO(civil(a, m, d + dias));
+}
+
 /** Ano e mês correntes em Manaus. */
 export function mesAtualCivil() {
   const agora = agoraCivil();

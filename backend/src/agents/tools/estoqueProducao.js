@@ -2,10 +2,11 @@
 import { z } from "zod";
 import * as clientesService from "../../services/clientesService.js";
 import * as estoqueService from "../../services/estoqueService.js";
+import * as materiaPrimaService from "../../services/materiaPrimaService.js";
 import * as producaoService from "../../services/producaoService.js";
 import * as saboresService from "../../services/saboresService.js";
 import { definirTool } from "./definirTool.js";
-import { dataCivil, idPositivo, itemSabor, numero } from "./formato.js";
+import { dataCivil, diaCivil, idPositivo, itemSabor, numero } from "./formato.js";
 
 export const consultarEstoqueAcabado = definirTool({
   nome: "consultarEstoqueAcabado",
@@ -22,23 +23,61 @@ export const consultarEstoqueAcabado = definirTool({
       observacao: "Saldo derivado de produção − vendas; ainda sem reconciliação por contagem física.",
     };
   },
+  resumir: (d) => ({ sabores: d.itens.length, negativos: d.itens.filter((i) => i.saldo < 0).length, totalProduzido: d.totalProduzido, totalVendido: d.totalVendido, totalSaldo: d.totalSaldo }),
 });
 
 export const consultarSaldoMateriasPrimas = definirTool({
   nome: "consultarSaldoMateriasPrimas",
-  descricao: "Saldo atual das matérias-primas ativas (na unidade base de cada uma), com os sinalizadores de saldo baixo e negativo.",
+  descricao:
+    "Saldo calculado das matérias-primas ativas (soma das movimentações, na unidade base), com o número de movimentações e a data da última. 'saldoBaixoLegado' é o limiar fixo antigo (< 200 em qualquer unidade), NÃO é estoque mínimo.",
   entrada: z.object({}).strict(),
   async executar() {
-    const lista = await estoqueService.resumoMateriasPrimas();
+    const lista = await materiaPrimaService.resumoMateriasPrimasDetalhado();
     return lista.map((m) => ({
       materiaPrimaId: m.id,
       nome: m.nome,
       unidadeBase: m.unidadeBase,
       saldo: m.saldo,
-      saldoBaixo: m.saldoBaixo,
       saldoNegativo: m.saldoNegativo,
+      saldoBaixoLegado: m.saldoBaixoLegado,
+      movimentacoes: m.movimentacoes,
+      ultimaMovimentacao: dataCivil(m.ultimaMovimentacao),
     }));
   },
+  resumir: (lista) => ({ materiasPrimas: lista.length, negativas: lista.filter((m) => m.saldoNegativo).length, semMovimento: lista.filter((m) => m.movimentacoes === 0).length }),
+});
+
+export const consultarReceitas = definirTool({
+  nome: "consultarReceitas",
+  descricao:
+    "Receita (rendimento e itens de matéria-prima) de cada sabor ativo e se ela é utilizável no cálculo de necessidades. Sabor sem receita = informação ausente, não consumo zero.",
+  entrada: z.object({}).strict(),
+  async executar() {
+    const sabores = await saboresService.listarReceitas();
+    return sabores.map((s) => ({
+      saborId: s.id,
+      sabor: s.nome,
+      rendimentoBase: s.rendimentoBase,
+      itens: s.receita.map((i) => ({ materiaPrimaId: i.materiaPrimaId, materiaPrima: i.materiaPrima.nome, quantidadeBase: numero(i.quantidadeBase), unidadeBase: i.materiaPrima.unidadeBase })),
+      utilizavel: Boolean(s.rendimentoBase) && s.rendimentoBase > 0 && s.receita.length > 0,
+    }));
+  },
+  resumir: (lista) => ({ sabores: lista.length, comReceitaUtilizavel: lista.filter((s) => s.utilizavel).length }),
+});
+
+export const consultarProducaoVendasPeriodo = definirTool({
+  nome: "consultarProducaoVendasPeriodo",
+  descricao:
+    "Unidades produzidas e vendidas por sabor entre dois dias (inclusive, calendário de Manaus). São fluxos registrados no período: não dependem do saldo histórico.",
+  entrada: z
+    .object({ dataInicio: diaCivil, dataFim: diaCivil })
+    .strict()
+    .refine((e) => e.dataInicio <= e.dataFim, { message: "dataInicio deve ser anterior ou igual a dataFim", path: ["dataFim"] }),
+  async executar({ dataInicio, dataFim }) {
+    const sabores = await producaoService.compararProducaoVendasPorSabor({ dataInicio, dataFim });
+    return { periodo: { dataInicio, dataFim }, sabores };
+  },
+  resumir: (d) => ({ periodo: d.periodo, sabores: d.sabores.length, produzido: d.sabores.reduce((s, x) => s + x.produzido, 0), vendido: d.sabores.reduce((s, x) => s + x.vendido, 0) }),
 });
 
 export const consultarResumoProducao = definirTool({

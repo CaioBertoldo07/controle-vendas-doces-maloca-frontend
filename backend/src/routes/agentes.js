@@ -8,6 +8,8 @@ router.get("/", agentesController.listarAgentes);
 router.get("/execucoes", agentesController.listarExecucoes);
 router.get("/execucoes/:id", agentesController.buscarExecucao);
 router.get("/recomendacoes", agentesController.listarRecomendacoes);
+router.post("/recomendacoes/:id/resolver", agentesController.resolverRecomendacao);
+router.post("/recomendacoes/:id/ignorar", agentesController.ignorarRecomendacao);
 router.get("/acoes", agentesController.listarAcoes);
 router.post("/acoes/:id/aprovar", agentesController.aprovarAcao);
 router.post("/acoes/:id/rejeitar", agentesController.rejeitarAcao);

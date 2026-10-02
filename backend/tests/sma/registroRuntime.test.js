@@ -85,17 +85,18 @@ describe("runtime: execução e auditoria", () => {
     const rt = runtimeTeste({ extras: [agenteTeste("espiao", async (ctx) => { visto = ctx; return Object.keys(ctx); })] });
     const { saida } = await rt.executarAgente("espiao", { tipo: "TESTE" });
     expect(saida.sort()).toEqual(
-      ["agente", "entrada", "enviarMensagem", "execucaoId", "profundidade", "raciocinar", "registrarRecomendacao", "toolsPermitidas", "usarTool"].sort(),
+      ["agente", "encerrarRecomendacoesAusentes", "entrada", "enviarMensagem", "execucaoId", "profundidade", "raciocinar", "registrarRecomendacao", "toolsPermitidas", "usarTool"].sort(),
     );
     expect(Object.isFrozen(visto)).toBe(true);
   });
 
+  // Etapa 2: o limite da SAÍDA de execução subiu para 32.000 caracteres (análise do Agente de Estoque).
   it("saída grande é guardada truncada na auditoria (a execução não falha)", async () => {
-    const rt = runtimeTeste({ extras: [agenteTeste("grande", async () => ({ texto: "x".repeat(20000) }))] });
+    const rt = runtimeTeste({ extras: [agenteTeste("grande", async () => ({ texto: "x".repeat(40000) }))] });
     const r = await rt.executarAgente("grande", { tipo: "TESTE" });
     const ex = await prisma.execucaoAgente.findUnique({ where: { id: r.execucaoId } });
     expect(ex.saida).toMatchObject({ _truncado: true });
-    expect(r.saida.texto).toHaveLength(20000);
+    expect(r.saida.texto).toHaveLength(40000);
   });
 });
 

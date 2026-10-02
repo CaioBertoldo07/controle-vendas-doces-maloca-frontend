@@ -25,11 +25,12 @@ async function cenarioVendas() {
 }
 
 describe("catálogo", () => {
-  it("9 tools; só proporAcao escreve; todas com JSON Schema estrito para o LLM", () => {
+  // Etapa 2: +consultarReceitas e +consultarProducaoVendasPeriodo (Agente de Estoque).
+  it("11 tools; só proporAcao escreve; todas com JSON Schema estrito para o LLM", () => {
     expect([...CATALOGO.keys()]).toEqual([
       "consultarVendasPeriodo", "consultarRankingSabores", "consultarRecebiveis", "consultarEstoqueAcabado",
       "consultarSaldoMateriasPrimas", "consultarResumoProducao", "calcularNecessidadesProducao",
-      "consultarEstatisticasCliente", "proporAcao",
+      "consultarEstatisticasCliente", "consultarReceitas", "consultarProducaoVendasPeriodo", "proporAcao",
     ]);
     expect([...CATALOGO.values()].filter((t) => t.escrita).map((t) => t.nome)).toEqual(["proporAcao"]);
     for (const t of CATALOGO.values()) {
@@ -99,9 +100,11 @@ describe("tools de estoque e produção", () => {
     const e = await chamar("consultarEstoqueAcabado", {});
     expect(e.dados.itens).toEqual([{ saborId: sabor.id, sabor: sabor.nome, produzido: 30, vendido: 0, saldo: 30 }]);
     expect(e.dados.totalSaldo).toBe((await estoqueService.obterEstoqueAcabado()).totalSaldo);
+    // Etapa 2: + movimentações e última data; o limiar fixo antigo sai como "saldoBaixoLegado" (não é estoque mínimo)
     const mp = await chamar("consultarSaldoMateriasPrimas", {});
     expect(mp.dados.find((m) => m.materiaPrimaId === acucar.id)).toEqual({
-      materiaPrimaId: acucar.id, nome: "Açúcar Fictício", unidadeBase: "g", saldo: 1500, saldoBaixo: false, saldoNegativo: false,
+      materiaPrimaId: acucar.id, nome: "Açúcar Fictício", unidadeBase: "g", saldo: 1500, saldoNegativo: false,
+      saldoBaixoLegado: false, movimentacoes: 1, ultimaMovimentacao: "2026-03-01T12:00:00.000-04:00",
     });
   });
 
@@ -160,7 +163,8 @@ describe("tools pelo contexto do agente: allowlist e auditoria", () => {
 });
 
 describe("arquitetura (verificação estática do código)", () => {
-  const ler = (dir) => fs.readdirSync(path.resolve(dir)).filter((f) => f.endsWith(".js")).map((f) => [f, fs.readFileSync(path.resolve(dir, f), "utf8")]);
+  // Recursivo desde a Etapa 2 (agentes/estoque/ é uma subpasta).
+  const ler = (dir) => fs.readdirSync(path.resolve(dir), { recursive: true }).filter((f) => f.endsWith(".js")).map((f) => [f, fs.readFileSync(path.resolve(dir, f), "utf8")]);
   const importacoes = (src) => [...src.matchAll(/from\s+["']([^"']+)["']/g)].map((m) => m[1]);
 
   it("tools importam services, nunca controllers nem o Prisma", () => {
@@ -172,7 +176,7 @@ describe("arquitetura (verificação estática do código)", () => {
   });
 
   it("agentes e LLM não importam Prisma, services nem controllers (só falam pelo contexto)", () => {
-    for (const dir of ["src/agents/agentes", "src/agents/llm"]) {
+    for (const dir of ["src/agents/agentes", "src/agents/llm", "src/agents/contratos"]) {
       for (const [arq, src] of ler(dir)) {
         expect(importacoes(src).filter((i) => /prisma|services|controllers|acoes\/servicoAcoes/.test(i)), `${dir}/${arq}`).toEqual([]);
       }

@@ -13,6 +13,7 @@ import {
   intervaloDaSemana,
   intervaloDoDia,
   intervaloDoMes,
+  intervaloEntreDatas,
   lerDataCivil,
   mesAtualCivil,
   nomeDoMes,
@@ -366,4 +367,30 @@ export async function obterResumoProducao({ mes, ano } = {}) {
     registros: producaoMes,
     meses,
   };
+}
+
+/**
+ * Unidades produzidas e vendidas por sabor entre dois dias civis (inclusive,
+ * calendário de Manaus). Fluxos do período: não dependem do saldo histórico
+ * (Etapa 2, comparação de ritmo do Agente de Estoque).
+ */
+export async function compararProducaoVendasPorSabor({ dataInicio, dataFim } = {}) {
+  const { inicio, fimExclusivo } = intervaloEntreDatas(dataInicio, dataFim);
+  const periodo = { gte: inicio, lt: fimExclusivo };
+  const [produzidos, vendidos] = await Promise.all([
+    prisma.producaoSabor.groupBy({ by: ["saborId"], where: { producao: { data: periodo } }, _sum: { quantidade: true } }),
+    prisma.vendaSabor.groupBy({ by: ["saborId"], where: { venda: { data: periodo } }, _sum: { quantidade: true } }),
+  ]);
+
+  const ids = [...new Set([...produzidos, ...vendidos].map((x) => x.saborId))];
+  const sabores = ids.length
+    ? await prisma.sabor.findMany({ where: { id: { in: ids } }, select: { id: true, nome: true } })
+    : [];
+  const nome = new Map(sabores.map((s) => [s.id, s.nome]));
+  const prod = new Map(produzidos.map((p) => [p.saborId, p._sum.quantidade ?? 0]));
+  const vend = new Map(vendidos.map((v) => [v.saborId, v._sum.quantidade ?? 0]));
+
+  return ids
+    .map((id) => ({ saborId: id, sabor: nome.get(id), produzido: prod.get(id) ?? 0, vendido: vend.get(id) ?? 0 }))
+    .sort((a, b) => a.sabor.localeCompare(b.sabor));
 }

@@ -116,3 +116,35 @@ export async function resumoMateriasPrimas() {
     };
   });
 }
+
+/**
+ * Matérias-primas ativas com saldo e volume de movimentações (Etapa 2, tools
+ * dos agentes). O sinalizador "saldo baixo" (< 200 em qualquer unidade, K15)
+ * sai com nome de LEGADO: não é estoque mínimo.
+ */
+export async function resumoMateriasPrimasDetalhado() {
+  const materias = await prisma.materiaPrima.findMany({
+    where: { ativo: true },
+    include: {
+      movimentacoes: {
+        select: { tipo: true, quantidade: true, data: true },
+      },
+    },
+    orderBy: { nome: "asc" },
+  });
+
+  return materias.map((mp) => {
+    const saldo = calcularSaldo(mp.movimentacoes);
+    const ultima = mp.movimentacoes.reduce((max, m) => (!max || m.data > max ? m.data : max), null);
+    return {
+      id: mp.id,
+      nome: mp.nome,
+      unidadeBase: mp.unidadeBase,
+      saldo: parseFloat(saldo.toFixed(3)),
+      saldoNegativo: saldo < 0,
+      saldoBaixoLegado: saldo > 0 && saldo < 200,
+      movimentacoes: mp.movimentacoes.length,
+      ultimaMovimentacao: ultima,
+    };
+  });
+}

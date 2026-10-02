@@ -229,7 +229,7 @@ model Recomendacao {
   titulo      String          @db.VarChar(200)
   descricao   String          @db.Text
   prioridade  String          @db.VarChar(10) // BAIXA | MEDIA | ALTA
-  status      String          @default("ABERTA") @db.VarChar(20) // ABERTA | RESOLVIDA | DESCARTADA
+  status      String          @default("ABERTA") @db.VarChar(20) // ABERTA | RESOLVIDA | IGNORADA (Etapa 2; dedup por dados.controle.chave)
   dados       Json?
   criadaEm    DateTime        @default(now())
   resolvidaEm DateTime?

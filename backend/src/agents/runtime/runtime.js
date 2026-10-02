@@ -9,23 +9,17 @@
 // O agente só recebe o `contexto`: tools permitidas (cada chamada vira uma
 // ChamadaTool), mensagens a outros agentes (MensagemAgente + execução filha),
 // recomendações e o LLM (se houver provedor). Nenhum acesso ao Prisma.
-import { z } from "zod";
 import { erro } from "../../lib/erros.js";
 import { prisma } from "../../lib/prisma.js";
 import { executarCicloLLM } from "../llm/cicloTools.js";
 import { semProvedor } from "../llm/provedor.js";
 import { executarTool, falha, paraLLM } from "../tools/definirTool.js";
+import { encerrarAusentes, registrarRecomendacao as registrarRec } from "./recomendacoes.js";
 import { ErroExecucaoAgente, comLimite, mensagemSegura, paraRegistro } from "./util.js";
 
-const esquemaRecomendacao = z
-  .object({
-    tipo: z.string().min(1).max(50),
-    titulo: z.string().min(3).max(200),
-    descricao: z.string().min(3).max(5000),
-    prioridade: z.enum(["BAIXA", "MEDIA", "ALTA"]),
-    dados: z.unknown().optional(),
-  })
-  .strict();
+// A saída de uma análise (ex.: Agente de Estoque) cabe inteira na auditoria;
+// tools e entradas continuam no limite padrão de paraRegistro.
+const LIMITE_SAIDA = 32000;
 
 export function criarRuntime({ registro, catalogo, provedorLLM = null, limiteMs = 30000, profundidadeMaxima = 4 }) {
   async function executarAgente(nome, entrada = {}, { gatilho = "INTERNO", execucaoPaiId = null, profundidade = 0 } = {}) {
@@ -48,7 +42,7 @@ export function criarRuntime({ registro, catalogo, provedorLLM = null, limiteMs 
       const saida = await comLimite(Promise.resolve().then(() => agente.executar(contexto)), limiteMs, `agente ${nome}`);
       await prisma.execucaoAgente.update({
         where: { id: execucao.id },
-        data: { status: "SUCESSO", saida: paraRegistro(saida), finalizadaEm: new Date(), duracaoMs: Date.now() - inicio },
+        data: { status: "SUCESSO", saida: paraRegistro(saida, LIMITE_SAIDA), finalizadaEm: new Date(), duracaoMs: Date.now() - inicio },
       });
       return { execucaoId: execucao.id, agente: nome, status: "SUCESSO", saida };
     } catch (e) {
@@ -80,7 +74,7 @@ export function criarRuntime({ registro, catalogo, provedorLLM = null, limiteMs 
           origem,
           entrada: paraRegistro(entradaTool),
           ok: resultado.ok,
-          saida: resultado.ok ? paraRegistro(resultado.dados) : paraRegistro(resultado.erro),
+          saida: resultado.ok ? paraRegistro(tool.resumir ? tool.resumir(resultado.dados) : resultado.dados) : paraRegistro(resultado.erro),
           erro: resultado.ok ? null : (interno ?? resultado.erro.mensagem),
           duracaoMs: Date.now() - inicio,
         },
@@ -116,12 +110,12 @@ export function criarRuntime({ registro, catalogo, provedorLLM = null, limiteMs 
       }
     }
 
-    async function registrarRecomendacao(dados) {
-      const r = esquemaRecomendacao.safeParse(dados);
-      if (!r.success) throw erro(400, `Recomendação inválida: ${r.error.issues.map((i) => i.path.join(".") + " " + i.message).join("; ")}`);
-      const { dados: extras, ...campos } = r.data;
-      return prisma.recomendacao.create({ data: { ...campos, agente: agente.nome, execucaoId, dados: paraRegistro(extras) } });
-    }
+    /** Cria ou atualiza (deduplicação por chave): { operacao, recomendacao }. Ver recomendacoes.js. */
+    const registrarRecomendacao = (entrada) => registrarRec({ agente: agente.nome, execucaoId, entrada });
+
+    /** Resolve as ABERTAS dos tipos informados que não foram detectadas nesta execução. */
+    const encerrarRecomendacoesAusentes = ({ tipos, chavesAtivas }) =>
+      encerrarAusentes({ agente: agente.nome, execucaoId, tipos, chavesAtivas });
 
     /** Raciocínio com LLM usando só as tools permitidas a este agente (ou um subconjunto delas). */
     async function raciocinar({ sistema, mensagens, tools = agente.tools, maxPassos, limiteMs: limiteLLM } = {}) {
@@ -139,6 +133,7 @@ export function criarRuntime({ registro, catalogo, provedorLLM = null, limiteMs 
       usarTool,
       enviarMensagem,
       registrarRecomendacao,
+      encerrarRecomendacoesAusentes,
       raciocinar,
     });
     return contexto;

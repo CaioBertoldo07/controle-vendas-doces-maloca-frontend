@@ -5,6 +5,8 @@ import {
   calcularNecessidadesProducao,
   consultarEstatisticasCliente,
   consultarEstoqueAcabado,
+  consultarProducaoVendasPeriodo,
+  consultarReceitas,
   consultarResumoProducao,
   consultarSaldoMateriasPrimas,
 } from "./estoqueProducao.js";
@@ -19,6 +21,8 @@ const TODAS = [
   consultarResumoProducao,
   calcularNecessidadesProducao,
   consultarEstatisticasCliente,
+  consultarReceitas,
+  consultarProducaoVendasPeriodo,
   proporAcao,
 ];
 

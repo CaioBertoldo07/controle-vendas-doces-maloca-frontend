@@ -1,13 +1,34 @@
 {
   "descricao": "Baseline da suíte de caracterização. Só altere de forma consciente, registrando o motivo em docs/tcc.",
-  "testes": 344,
-  "arquivos": 20,
+  "testes": 387,
+  "arquivos": 23,
   "pendentesPermitidos": 0,
   "definidaEm": "2026-10-01",
-  "motivo": "Etapa 1: +79 testes da infraestrutura multiagente em tests/sma (7 arquivos: registroRuntime 16, tools 16, agentesHttp 15, acoes 14, llm 10, mensagens 4, coordenador 4). Os 265 anteriores intactos (docs/tcc/etapa-1-infraestrutura-multiagente.md)",
+  "motivo": "Etapa 2: +43 testes do Agente de Estoque (estoqueRegras 26, estoqueAgente 12, estoqueHttp 4 em tests/sma; +1 em periodos.test.js). Nenhum teste removido; 5 testes SMA da Etapa 1 ajustados por evolução de contrato interno (docs/tcc/etapa-2-agente-estoque.md)",
   "historico": [
-    { "testes": 265, "arquivos": 13, "definidaEm": "2026-10-01", "motivo": "Etapa 0.6: +33 testes de invariantes (docs/tcc/etapa-0-6-invariantes-criticas.md)" },
-    { "testes": 232, "arquivos": 13, "definidaEm": "2026-09-30", "motivo": "Etapa 0.5: +30 testes da política temporal (docs/tcc/etapa-0-5-politica-temporal.md)" },
-    { "testes": 202, "arquivos": 11, "definidaEm": "2026-09-29", "motivo": "Etapa 0.3: suíte de caracterização inicial (docs/tcc/etapa-0-3-testes-caracterizacao.md)" }
+    {
+      "testes": 344,
+      "arquivos": 20,
+      "definidaEm": "2026-10-01",
+      "motivo": "Etapa 1: +79 testes da infraestrutura multiagente (docs/tcc/etapa-1-infraestrutura-multiagente.md)"
+    },
+    {
+      "testes": 265,
+      "arquivos": 13,
+      "definidaEm": "2026-10-01",
+      "motivo": "Etapa 0.6: +33 testes de invariantes (docs/tcc/etapa-0-6-invariantes-criticas.md)"
+    },
+    {
+      "testes": 232,
+      "arquivos": 13,
+      "definidaEm": "2026-09-30",
+      "motivo": "Etapa 0.5: +30 testes da política temporal (docs/tcc/etapa-0-5-politica-temporal.md)"
+    },
+    {
+      "testes": 202,
+      "arquivos": 11,
+      "definidaEm": "2026-09-29",
+      "motivo": "Etapa 0.3: suíte de caracterização inicial (docs/tcc/etapa-0-3-testes-caracterizacao.md)"
+    }
   ]
 }

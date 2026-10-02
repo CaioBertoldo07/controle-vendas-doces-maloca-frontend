@@ -6,7 +6,8 @@
 // HTTP ao próprio backend). O LLM só aparece através de `contexto.raciocinar`,
 // que oferece definições de tools; quem executa é o runtime.
 import { coordenador } from "./agentes/coordenador.js";
-import { atendimento, estoque, inteligencia, vendas } from "./agentes/stubs.js";
+import { estoque } from "./agentes/estoque/index.js";
+import { atendimento, inteligencia, vendas } from "./agentes/stubs.js";
 import { obterProvedorConfigurado } from "./llm/provedor.js";
 import { criarRegistro } from "./runtime/registro.js";
 import { criarRuntime } from "./runtime/runtime.js";

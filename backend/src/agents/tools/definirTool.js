@@ -11,14 +11,18 @@
 import { z } from "zod";
 import { ErroDominio } from "../../lib/erros.js";
 
-/** Cria uma tool imutável. `entrada` é um schema Zod (use .strict()). */
-export function definirTool({ nome, descricao, entrada, executar, escrita = false }) {
+/**
+ * Cria uma tool imutável. `entrada` é um schema Zod (use .strict()).
+ * `resumir(dados)` (opcional): o que vai para a auditoria (ChamadaTool.saida)
+ * no lugar do resultado inteiro, para não guardar datasets grandes.
+ */
+export function definirTool({ nome, descricao, entrada, executar, escrita = false, resumir = null }) {
   if (!/^[a-z][A-Za-z0-9]{2,79}$/.test(nome ?? "")) throw new Error(`Nome de tool inválido: "${nome}"`);
   if (!descricao || typeof executar !== "function" || !(entrada instanceof z.ZodType)) {
     throw new Error(`Tool "${nome}" incompleta`);
   }
   const { $schema, ...parametros } = z.toJSONSchema(entrada);
-  return Object.freeze({ nome, descricao, entrada, executar, escrita, parametros });
+  return Object.freeze({ nome, descricao, entrada, executar, escrita, resumir, parametros });
 }
 
 /** Definição exposta a um provedor de LLM (sem a função executora). */

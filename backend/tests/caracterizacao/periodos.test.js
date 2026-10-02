@@ -9,7 +9,10 @@ import { describe, expect, it } from "vitest";
 import {
   civil,
   civilParaInstante,
+  deslocarDiaISO,
+  diaCivilISO,
   formatarDiaCivil,
+  hojeCivilISO,
   intervaloDaSemana,
   intervaloDoDia,
   intervaloDoMes,
@@ -100,6 +103,16 @@ describe("semana e intervalo de datas", () => {
     const p = intervaloEntreDatas("2026-03-31", "2026-04-01");
     expect([iso(p.inicio), iso(p.fimExclusivo)]).toEqual(["2026-03-31T00:00:00.000Z", "2026-04-02T00:00:00.000Z"]);
     expect(dentro(lerDataCivil("2026-04-01T23:59:59.999"), p)).toBe(true);
+  });
+});
+
+describe("dias civis em texto (Etapa 2: janelas do Agente de Estoque)", () => {
+  it("diaCivilISO, deslocarDiaISO (fevereiro bissexto, virada do ano) e hojeCivilISO em Manaus", () => {
+    expect(diaCivilISO(civil(2026, 3, 31, 23, 59))).toBe("2026-03-31");
+    expect(deslocarDiaISO("2028-03-01", -1)).toBe("2028-02-29");
+    expect(deslocarDiaISO("2026-12-31", 1)).toBe("2027-01-01");
+    expect(deslocarDiaISO("2026-09-30", -29)).toBe("2026-09-01");
+    expect(hojeCivilISO()).toBe(new Intl.DateTimeFormat("en-CA", { timeZone: "America/Manaus" }).format(new Date()));
   });
 });
 
