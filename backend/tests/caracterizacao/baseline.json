@@ -1,11 +1,17 @@
 {
   "descricao": "Baseline da suíte de caracterização. Só altere de forma consciente, registrando o motivo em docs/tcc.",
-  "testes": 627,
+  "testes": 631,
   "arquivos": 39,
   "pendentesPermitidos": 0,
-  "definidaEm": "2026-10-02",
-  "motivo": "Etapa 6: +45 testes de hardening (atomicidade, concorrência/lease, verificação factual por afirmações, rotinas/eventos/flags fail-closed/health, privacidade, cenário integrado) (docs/tcc/etapa-6-hardening-producao.md)",
+  "definidaEm": "2026-10-05",
+  "motivo": "Etapa 6.1: +4 testes da verificação factual a partir de achados com o provider real (período com unidade, base de percentual vinda do fato, base CLIENTES aceita quando o fato a tem, referência externa) (docs/tcc/etapa-6-hardening-producao.md)",
   "historico": [
+    {
+      "testes": 627,
+      "arquivos": 39,
+      "definidaEm": "2026-10-02",
+      "motivo": "Etapa 6 (commit c2fa047): hardening + flags fail-closed"
+    },
     {
       "testes": 582,
       "arquivos": 33,

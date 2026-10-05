@@ -30,6 +30,10 @@ import { valoresDe } from "./fatos.js";
 export const LIMITE_FATOS_POR_RESULTADO = 90;
 export const MAX_AFIRMACOES = 6;
 const SEMPRE_ACEITOS = new Set([0, 1, 2, 3, 4]); // contagens pequenas ("2 sabores"), como na Etapa 5
+// Etapa 6.1 (validação com o provider real): um número com unidade de PERÍODO nunca é
+// "contagem pequena": "4 meses" para uma janela de 4 semanas chegou ao gestor. Ele
+// precisa bater com um fato de período (citado ou o período da própria consulta).
+const PERIODOS = new Set(["semanas", "dias", "meses", "anos"]);
 
 /** Minúsculas sem acento, preservando o comprimento (posições valem no texto original). */
 const norm = (s) => String(s ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
@@ -54,6 +58,34 @@ function unidadeDaMetrica(metrica, irmaos) {
   if (typeof irmaos?.unidade === "string") return irmaos.unidade; // matérias-primas: g, ml...
   if (/\b(unidades|produzido|vendido|saldo|demanda|producao|media|pode produzir)\b/.test(m)) return "un";
   return "numero";
+}
+
+/**
+ * Base de cada percentual do catálogo ("X% DE QUÊ"), pela última chave da métrica. Etapa 6.1.
+ * O FATO carrega a base; o checker compara a base escrita na afirmação com a dos fatos citados.
+ * Métrica nova com outra base (ex.: CLIENTES) entra aqui; percentual fora da tabela tem base
+ * desconhecida (null) e não sustenta afirmação que declare base.
+ */
+export const BASE_DO_PERCENTUAL = Object.freeze({
+  participacao: "UNIDADES", //                     mix, tendências, perfil por dia
+  participacaoClientesRecorrentes: "UNIDADES", //  fatia das UNIDADES do sabor compradas por recorrentes
+  duasMaiores: "UNIDADES",
+  maiorParticipacao: "UNIDADES",
+  variacaoPercentual: "UNIDADES",
+  unidadesPercentual: "UNIDADES",
+  faturamentoPercentual: "FATURAMENTO",
+  sobreFaturamentoPercentual: "FATURAMENTO",
+});
+const baseDaMetrica = (metrica) => BASE_DO_PERCENTUAL[metrica.split(".").at(-1)] ?? null;
+
+/** Base declarada na afirmação logo depois do percentual ("66,7% das unidades", "11,1% dos clientes"). */
+function baseNoTexto(t, fim) {
+  const m = /^\s*(%|por cento)\s*(d[eoa]s?\s+)?((seus|suas|os|as|o|a)\s+)?(\p{L}+)/u.exec(t.slice(fim, fim + 40));
+  if (!m) return null;
+  if (/^(clientes?|compradores?)$/.test(m[5])) return "CLIENTES";
+  if (/^(unidades?|volume)$/.test(m[5])) return "UNIDADES";
+  if (/^(faturamento|receita)$/.test(m[5])) return "FATURAMENTO";
+  return null; // base não declarada (ou ambígua): não há o que conferir
 }
 
 function familiaDaMetrica(metrica) {
@@ -96,7 +128,10 @@ function folhas(fatos) {
       return undefined;
     }
     const metrica = caminho.join(".");
-    if (typeof v === "number" && Number.isFinite(v)) saida.push({ entidade, metrica, valor: v, unidade: unidadeDaMetrica(metrica, irmaos) });
+    if (typeof v === "number" && Number.isFinite(v)) {
+      const unidade = unidadeDaMetrica(metrica, irmaos);
+      saida.push({ entidade, metrica, valor: v, unidade, ...(unidade === "%" && { base: baseDaMetrica(metrica) }) });
+    }
     else if (typeof v === "boolean") saida.push({ entidade, metrica, valor: v, unidade: null });
     else if (typeof v === "string") saida.push({ entidade, metrica, valor: v, unidade: ISO.test(v) ? "data" : v.length > 40 ? "texto" : null });
     return undefined;
@@ -182,6 +217,8 @@ function unidadeNoTexto(t, inicio, fim) {
   if (/^\s*(un\b|un\.|unid)/.test(depois)) return "un";
   if (/^\s*semanas?\b/.test(depois)) return "semanas";
   if (/^\s*dias?\b/.test(depois)) return "dias";
+  if (/^\s*(mes|meses)\b/.test(depois)) return "meses";
+  if (/^\s*anos?\b/.test(depois)) return "anos";
   if (/^\s*(vendas?|pedidos?)\b/.test(depois)) return "vendas";
   if (/^\s*clientes?\b/.test(depois)) return "clientes";
   if (/^\s*sabores?\b/.test(depois)) return "sabores";
@@ -237,6 +274,8 @@ function analisarTexto(original, catalogo) {
       bruto: m[0],
       valores: valoresDe(m[0]),
       unidade: unidadeNoTexto(t, inicio, fim),
+      // Etapa 6.1: a base declarada ("11,1% dos compradores") é conferida com a base do fato citado
+      base: baseNoTexto(t, fim),
       // entidade: o sabor mais próximo antes do número na frase ("Tradicional teve 30"); senão, logo depois ("30 do Tradicional")
       entidade: maisProximo(mencoes, inicio, frase(original, inicio))?.entidade ?? null,
       // natureza: a palavra-chave mais próxima na mesma oração ("cresceu 25%" × "representa 66,7%"; "média de 22,5")
@@ -277,6 +316,8 @@ const GUARDAS = [
   { codigo: "PAGAMENTO_CONFIAVEL", critico: "PAGAMENTOS_COM_RESSALVA", re: /em dia|pontua|sempre pag|pagam (bem|certo)|pagamentos? confiave/g },
 ];
 
+const ANAFORA = /\b(mesm[oa]|ness[ea]|nest[ea]|ess[ea]|est[ea]|dess[ea]|dest[ea])\s+(mesm[oa]\s+)?(periodo|janela|intervalo|saldo|valor|media|numero)\b/g;
+
 function guardaSemantica(analise, citados, catalogo) {
   const criticos = new Set(catalogo.fatos.filter((f) => f.critico).map((f) => f.critico));
   for (const g of GUARDAS) {
@@ -285,6 +326,15 @@ function guardaSemantica(analise, citados, catalogo) {
     if (trecho) return { motivo: `SEMANTICA_${g.codigo}`, detalhe: trecho };
   }
   if (analise.mencoes.length && afirmaSemNegar(analise.t, /custo/g)) return { motivo: "SEMANTICA_CUSTO_POR_SABOR", detalhe: "custo" }; // custo só existe agregado
+  // Etapa 6.1: cada afirmação é validada SOZINHA, então uma referência a outra ("no mesmo
+  // período", "esse saldo") não é verificável: com o provider real, "a produção no mesmo
+  // período foi de 10/semana" herdou o período de 8 semanas da frase anterior (eram 4).
+  // Só passa se o antecedente estiver na própria afirmação.
+  for (const m of analise.t.matchAll(ANAFORA)) {
+    const antes = analise.t.slice(0, m.index);
+    const temAntecedente = /periodo|janela|intervalo/.test(m[3]) ? /\d{1,2}\/\d{1,2}|\d{4}-\d{2}-\d{2}|\d+\s+semanas?/.test(antes) : antes.includes(m[3]);
+    if (!temAntecedente) return { motivo: "SEMANTICA_REFERENCIA_EXTERNA", detalhe: m[0] };
+  }
   // saldo contábil apresentado como "estoque" sem a qualificação (contábil/histórico/não reconciliado)
   const citaSaldo = citados.some((f) => /estoqueAcabado\..*saldo|divergencias\.saldo/i.test(f.metrica));
   if (citaSaldo && /estoque/.test(analise.t) && !/contabil|historic|registr|reconcil|contagem/.test(analise.t)) return { motivo: "SEMANTICA_SALDO_COMO_ESTOQUE", detalhe: "estoque" };
@@ -295,19 +345,26 @@ function guardaSemantica(analise, citados, catalogo) {
 function candidatos(citados) {
   const lista = [];
   for (const f of citados) {
-    if (typeof f.valor === "number") lista.push({ id: f.id, valores: [f.valor], unidade: f.unidade, entidade: f.entidade, familia: familiaDaMetrica(f.metrica) });
-    for (const a of f.atomos ?? []) lista.push({ id: f.id, valores: a.valores, unidade: a.unidade, entidade: a.entidade ?? f.entidade, familia: a.familia });
+    if (typeof f.valor === "number") lista.push({ id: f.id, valores: [f.valor], unidade: f.unidade, entidade: f.entidade, familia: familiaDaMetrica(f.metrica), base: f.base ?? null });
+    for (const a of f.atomos ?? []) lista.push({ id: f.id, valores: a.valores, unidade: a.unidade, entidade: a.entidade ?? f.entidade, familia: a.familia, base: a.base });
   }
   return lista;
 }
 
 /** Por que o número não é sustentado (o filtro que eliminou o último candidato), para a auditoria. */
-function conferirNumero(atomo, cands, extras) {
+function conferirNumero(atomo, citados, extras, doPeriodo) {
   const v = atomo.valores;
+  const periodo = PERIODOS.has(atomo.unidade);
   if (v.some((x) => extras.includes(x))) return null; // número que o próprio gestor escreveu ("8 semanas")
-  if (v.some((x) => SEMPRE_ACEITOS.has(x)) && atomo.unidade !== "%" && atomo.unidade !== "R$") return null;
+  if (v.some((x) => SEMPRE_ACEITOS.has(x)) && !periodo && atomo.unidade !== "%" && atomo.unidade !== "R$") return null;
+  const cands = periodo ? [...citados, ...doPeriodo] : citados;
   let resto = cands.filter((c) => c.valores.some((n) => v.some((x) => bate(x, n))));
   if (!resto.length) return "VALOR";
+  if (atomo.base) {
+    // a afirmação declara a base do percentual: algum fato citado com esse valor precisa ter essa base
+    resto = resto.filter((c) => c.base === atomo.base);
+    if (!resto.length) return "BASE";
+  }
   resto = resto.filter((c) => unidadeCompativel(atomo.unidade, c.unidade));
   if (!resto.length) return "UNIDADE";
   if (atomo.entidade) {
@@ -349,8 +406,9 @@ export function validarAfirmacao(afirmacao, catalogo, { extras = [] } = {}) {
 
   const extrasNum = extras.flatMap((e) => analisarTexto(e, { entidades: [] }).atomos.flatMap((a) => a.valores));
   const cands = candidatos(citados);
+  const doPeriodo = candidatos(contexto.filter((f) => /periodo|janela|metodologia/.test(f.metrica)));
   for (const atomo of analise.atomos) {
-    const falha = conferirNumero(atomo, cands, extrasNum);
+    const falha = conferirNumero(atomo, cands, extrasNum, doPeriodo);
     if (falha) return { valida: false, motivo: `NUMERO_${falha}`, detalhe: atomo.bruto };
   }
   return { valida: true };

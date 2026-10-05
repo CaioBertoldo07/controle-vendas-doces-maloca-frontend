@@ -87,7 +87,7 @@ describe("ataques: alucinações plausíveis são descartadas", () => {
     expect(valida("O estoque físico de Tradicional é de -20 unidades.", saldo)).toMatchObject({ valida: false, motivo: "SEMANTICA_ESTOQUE_FISICO" });
     expect(valida("Tradicional tem -20 unidades em estoque.", saldo)).toMatchObject({ valida: false, motivo: "SEMANTICA_SALDO_COMO_ESTOQUE" });
     expect(valida("O estoque real de Maracujá é 15.", [id("Maracujá", "saldoContabilHistorico")])).toMatchObject({ valida: false, motivo: "SEMANTICA_ESTOQUE_FISICO" });
-    expect(valida("Esse saldo não é estoque físico: Tradicional está em -20 no saldo contábil.", saldo)).toEqual({ valida: true });
+    expect(valida("O saldo contábil de Tradicional, -20, não é estoque físico.", saldo)).toEqual({ valida: true });
   });
 
   it("média histórica apresentada como previsão", () => {
@@ -113,6 +113,44 @@ describe("ataques: alucinações plausíveis são descartadas", () => {
     expect(valida("Tradicional vendeu 90 unidades.", [id("Tradicional", "sabores.participacao")])).toEqual({ valida: false, motivo: "NUMERO_VALOR", detalhe: "90" });
     expect(valida("O faturamento foi de R$ 135.", [id(null, "indicadores.unidades"), id(null, "faturamentoRegistrado")])).toEqual({ valida: false, motivo: "NUMERO_UNIDADE", detalhe: "135" });
     expect(valida("Tradicional vendeu 90 unidades desde 01/07.", [id("Tradicional", "ritmo.sabores.vendido")])).toEqual({ valida: false, motivo: "DATA_NAO_SUPORTADA", detalhe: "01/07" });
+  });
+
+  it("período com unidade errada (achado da validação com o provider real): \"4 meses\" para uma janela de 4 semanas", () => {
+    const vendido = [id("Tradicional", "ritmo.sabores.vendido")];
+    expect(valida("Nos 4 meses de 30/08 a 26/09, Tradicional vendeu 90 unidades.", vendido)).toEqual({ valida: false, motivo: "NUMERO_UNIDADE", detalhe: "4" });
+    expect(valida("Em 3 anos, Tradicional vendeu 90 unidades.", vendido)).toEqual({ valida: false, motivo: "NUMERO_VALOR", detalhe: "3" });
+    // o período certo continua passando, mesmo sem citar o fato da janela (é o período da própria consulta)
+    expect(valida("Nas 4 semanas de 30/08 a 26/09, Tradicional vendeu 90 unidades.", vendido)).toEqual({ valida: true });
+    expect(valida("Tradicional vendeu 90 unidades em 3 semanas.", vendido)).toEqual({ valida: false, motivo: "NUMERO_VALOR", detalhe: "3" });
+    expect(valida("Tradicional teve 2 clientes recorrentes.", vendido)).toEqual({ valida: true }); // contagem pequena sem período: como antes
+  });
+
+  it("percentual com base errada (achado da validação com o provider real): participação de UNIDADES dita \"de compradores\"", () => {
+    const part = [id("Maracujá", "sabores.participacao")];
+    expect(valida("Maracujá tem 33,3% de seus compradores.", part)).toEqual({ valida: false, motivo: "NUMERO_BASE", detalhe: "33,3" });
+    expect(valida("Maracujá representa 33,3% dos clientes.", part)).toEqual({ valida: false, motivo: "NUMERO_BASE", detalhe: "33,3" });
+    expect(valida("Maracujá representa 33,3% das unidades.", part)).toEqual({ valida: true });
+    expect(cat.porId.get(part[0]).base).toBe("UNIDADES"); // a base vem do fato (tabela por métrica)
+  });
+
+  it("a base é a do FATO, não uma proibição global: percentual com base CLIENTES aceita \"dos clientes\"; base desconhecida não sustenta base declarada", () => {
+    const fato = (id, metrica, base) => ({ id, intencao: "TESTE", entidade: "Maracujá", metrica, valor: 40, unidade: "%", ...(base !== undefined && { base }) });
+    const extra = [fato("FX1", "teste.participacaoDeClientes", "CLIENTES"), fato("FX2", "teste.participacaoSemBase", null)];
+    const catalogo = { ...cat, fatos: [...cat.fatos, ...extra], porId: new Map([...cat.porId, ...extra.map((f) => [f.id, f])]) };
+    const v = (texto, ids) => validarAfirmacao({ texto, factIds: ids }, catalogo);
+    expect(v("Maracujá tem 40% dos clientes.", ["FX1"])).toEqual({ valida: true });
+    expect(v("Maracujá tem 40% das unidades.", ["FX1"])).toEqual({ valida: false, motivo: "NUMERO_BASE", detalhe: "40" });
+    expect(v("Maracujá tem 40% dos clientes.", ["FX2"])).toEqual({ valida: false, motivo: "NUMERO_BASE", detalhe: "40" });
+    expect(v("Maracujá tem 40%.", ["FX2"])).toEqual({ valida: true }); // sem base declarada: nada a conferir
+  });
+
+  it("referência a outra afirmação (achado da validação com o provider real): \"no mesmo período\" / \"esse saldo\" sem antecedente", () => {
+    const prod = [id("Tradicional", "producaoMediaSemanal")];
+    expect(valida("A produção de Tradicional no mesmo período foi de 10 unidades por semana.", prod)).toEqual({ valida: false, motivo: "SEMANTICA_REFERENCIA_EXTERNA", detalhe: "mesmo periodo" });
+    expect(valida("Esse saldo contábil de Tradicional está negativo.", [id("Tradicional", "saldoContabilHistorico")])).toEqual({ valida: false, motivo: "SEMANTICA_REFERENCIA_EXTERNA", detalhe: "esse saldo" });
+    // com o antecedente na própria afirmação, passa
+    expect(valida("Entre 30/08 e 26/09, Tradicional teve produção média de 10 unidades por semana no mesmo período.", prod)).toEqual({ valida: true });
+    expect(valida("O saldo contábil de Tradicional é -20 unidades; esse saldo não foi reconciliado.", [id("Tradicional", "saldoContabilHistorico")])).toEqual({ valida: true });
   });
 
   it("MRP indisponível, margem/lucro e custo por sabor", () => {
