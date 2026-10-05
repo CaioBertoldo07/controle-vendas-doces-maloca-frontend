@@ -1,5 +1,5 @@
 const CACHE_NAME = "doces-maloca-v1";
-const STATIC_CACHE = "doces-maloca-static-v2";
+const STATIC_CACHE = "doces-maloca-static-v3";
 const API_CACHE = "doces-maloca-api-v1";
 
 // Arquivos que sempre vão para cache (shell do app)
