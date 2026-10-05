@@ -23,7 +23,7 @@ export const AuthProvider = ({ children }) => {
 
     try {
       const response = await authAPI.verificar();
-      console.log('✅ Token válido, usuário:', response.data.usuario);
+      console.log('✅ Token válido');
       setUsuario(response.data.usuario);
     } catch (error) {
       console.error('❌ Token inválido:', error);
@@ -35,33 +35,32 @@ export const AuthProvider = ({ children }) => {
   };
 
   const login = async (email, senha) => {
-    console.log('🔐 Fazendo login com:', email);
-    
+    // Etapa 7: nada de e-mail, token ou dados do usuário no console
+    console.log('🔐 Fazendo login');
+
     const response = await authAPI.login(email, senha);
-    console.log('✅ Resposta do login:', response.data);
-    
+
     const { token, usuario: usuarioData } = response.data;
-    
+
     localStorage.setItem('token', token);
     setUsuario(usuarioData);
-    
-    console.log('✅ Estado atualizado - Usuário logado:', usuarioData);
+
+    console.log('✅ Login concluído');
     
     return response.data;
   };
 
   const registro = async (nome, email, senha) => {
-    console.log('✨ Criando conta para:', email);
-    
+    console.log('✨ Criando conta');
+
     const response = await authAPI.registro(nome, email, senha);
-    console.log('✅ Resposta do registro:', response.data);
-    
+
     const { token, usuario: usuarioData } = response.data;
-    
+
     localStorage.setItem('token', token);
     setUsuario(usuarioData);
-    
-    console.log('✅ Estado atualizado - Usuário registrado:', usuarioData);
+
+    console.log('✅ Conta criada');
     
     return response.data;
   };
@@ -72,7 +71,7 @@ export const AuthProvider = ({ children }) => {
     setUsuario(null);
   };
 
-  console.log('📊 AuthContext - Estado atual:', { usuario: usuario?.nome, loading });
+  console.log('📊 AuthContext - Estado atual:', { autenticado: Boolean(usuario), loading });
 
   return (
     <AuthContext.Provider value={{ usuario, login, registro, logout, loading }}>

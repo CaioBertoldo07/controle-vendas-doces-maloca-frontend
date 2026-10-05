@@ -24,7 +24,7 @@ export const buscarCliente = async (req, res) => {
 export const criarCliente = async (req, res) => {
   try {
     const cliente = await clientesService.criarCliente(req.body);
-    console.log("✅ Cliente criado:", cliente);
+    console.log(`✅ Cliente criado: id=${cliente.id}`); // sem dados pessoais no log (Etapa 7)
     res.status(201).json(cliente);
   } catch (error) {
     if (responderErroDominio(res, error)) return;
@@ -36,7 +36,7 @@ export const criarCliente = async (req, res) => {
 export const atualizarCliente = async (req, res) => {
   try {
     const cliente = await clientesService.atualizarCliente(req.params.id, req.body);
-    console.log("✅ Cliente atualizado:", cliente);
+    console.log(`✅ Cliente atualizado: id=${cliente.id}`); // sem dados pessoais no log (Etapa 7)
     res.json(cliente);
   } catch (error) {
     if (responderErroDominio(res, error)) return;

@@ -17,9 +17,7 @@ export const criarVendaAuto = async (req, res) => {
 
     const { venda, cliente, saboresResolvidos } = resultado;
     await sinalizarSeHabilitado("VENDA_REGISTRADA"); // Etapa 6: só marca que a análise é necessária
-    console.log(
-      `✅ [AUTO] Venda registrada via n8n: ${venda.id} - ${cliente.nome}`,
-    );
+    console.log(`✅ [AUTO] Venda registrada via n8n: id=${venda.id}`); // sem nome de cliente no log (Etapa 7)
 
     return res.status(201).json({
       message: "Venda registrada com sucesso",
@@ -42,7 +40,7 @@ export const criarVenda = async (req, res) => {
   try {
     const venda = await vendasService.criarVenda(req.body);
     await sinalizarSeHabilitado("VENDA_REGISTRADA"); // Etapa 6: só marca que a análise é necessária
-    console.log("✅ Venda criada:", venda);
+    console.log(`✅ Venda criada: id=${venda.id}`); // só o id: o objeto tinha cliente e valores (Etapa 7)
     res.status(201).json(venda);
   } catch (error) {
     if (responderErroDominio(res, error)) return;
