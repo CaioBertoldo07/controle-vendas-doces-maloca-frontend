@@ -48,7 +48,7 @@ function Dashboard() {
       <header className="header">
         <div className="header-content">
           <h1>
-            <img src="icon.png" alt="ícone" style={{ width:'100px', height:'100px' }} />
+            <img src="/logo.webp" alt="Cocadas Caboquinha" style={{ height:'100px', width:'auto' }} />
             Doces e Sabores da Maloca
           </h1>
           <div className="user-info">
