@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { useTheme } from '../context/ThemeContext';
+import ThemeToggle from '../components/ThemeToggle';
 import './Login.css';
 
 function Login() {
@@ -13,7 +13,6 @@ function Login() {
   const [loading, setLoading] = useState(false);
 
   const { login, usuario } = useAuth();
-  const { isDarkMode, toggleTheme } = useTheme();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -38,13 +37,7 @@ function Login() {
 
   return (
     <div className="login-container">
-      <div className="login-theme-toggle" onClick={toggleTheme}>
-        <div className={`theme-toggle-switch ${isDarkMode ? 'active' : ''}`}>
-          <div className={`theme-toggle-slider ${isDarkMode ? 'active' : ''}`}>
-            {isDarkMode ? '🌙' : '☀️'}
-          </div>
-        </div>
-      </div>
+      <ThemeToggle className="login-theme-toggle" />
 
       <div className="login-box">
         <div className="login-header">
