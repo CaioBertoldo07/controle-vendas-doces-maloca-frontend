@@ -196,7 +196,7 @@ export default function Producao() {
         <div className="card" style={{ marginBottom:'1.5rem' }}>
           <h2>📦 Saldo Estimado por Sabor</h2>
           <p style={{ color:'var(--text-secondary)', fontSize:'0.9rem', marginBottom:'1.2rem' }}>
-            Produção acumulada − Vendas acumuladas
+            Produção acumulada − Vendas acumuladas ± Ajustes de estoque
           </p>
           <div style={{ display:'flex', flexDirection:'column', gap:'0.8rem' }}>
             {Object.entries(resumo.saldoPorSaborCumulativo).map(([nome, dados]) => {
@@ -218,6 +218,7 @@ export default function Producao() {
                   <div style={{ display:'flex', gap:'1.5rem', fontSize:'0.85rem', color:'var(--text-secondary)', marginBottom:'0.6rem' }}>
                     <span>🏭 Produzido: <strong style={{ color:'var(--laranja-maloca)' }}>{dados.produzido}</strong></span>
                     <span>🛒 Vendido: <strong style={{ color:'var(--text-primary)' }}>{dados.vendido}</strong></span>
+                    {!!dados.ajustado && <span>⚖️ Ajustes: <strong style={{ color:'var(--text-primary)' }}>{dados.ajustado > 0 ? '+' : ''}{dados.ajustado}</strong></span>}
                   </div>
                   <div style={{ width:'100%', background:'var(--bg-secondary)', borderRadius:'999px', height:'6px' }}>
                     <div style={{

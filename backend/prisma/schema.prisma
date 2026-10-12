@@ -13,6 +13,7 @@ model Usuario {
   email    String   @unique @db.VarChar(100)
   senha    String   @db.VarChar(255)
   criadoEm DateTime @default(now())
+  ajustesEstoque AjusteEstoque[]
   @@map("usuarios")
 }
 
@@ -32,6 +33,7 @@ model Sabor {
   vendaSabores    VendaSabor[]
   producaoSabores ProducaoSabor[]
   receita         ReceitaItem[]
+  ajustesEstoque  AjusteEstoque[]
   @@map("sabores")
 }
 
@@ -141,4 +143,26 @@ model ProducaoSabor {
   @@index([producaoId])
   @@index([saborId])
   @@map("producao_sabores")
+}
+
+// Ajuste de estoque de produto acabado (sabor) a partir de contagem física.
+// Registro de auditoria: só é criado, nunca editado nem apagado. O saldo do
+// sabor é produzido − vendido + soma das diferenças dos ajustes.
+model AjusteEstoque {
+  id             Int      @id @default(autoincrement())
+  saborId        Int
+  usuarioId      Int
+  saldoAnterior  Int
+  saldoNovo      Int
+  diferenca      Int
+  motivo         String   @db.VarChar(30)
+  justificativa  String?  @db.VarChar(255)
+  idempotencyKey String   @unique @db.VarChar(100)
+  data           DateTime @default(now())
+  sabor          Sabor    @relation(fields: [saborId], references: [id])
+  usuario        Usuario  @relation(fields: [usuarioId], references: [id])
+  @@index([saborId])
+  @@index([usuarioId])
+  @@index([data])
+  @@map("ajustes_estoque")
 }
