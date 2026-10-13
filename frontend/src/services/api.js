@@ -101,6 +101,8 @@ export const materiasPrimasAPI = {
 
 export const estoqueAPI = {
   listar: () => api.get("/estoque"),
+  listarAjustes: (params) => api.get("/estoque/ajustes", { params }),
+  ajustar: (dados) => api.post("/estoque/ajustes", dados),
 };
 
 export default api;

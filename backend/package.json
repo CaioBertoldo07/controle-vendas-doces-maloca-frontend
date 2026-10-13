@@ -14,6 +14,7 @@
     "db:dev:seed": "node prisma/seed.js",
     "db:test:reset": "node scripts/ambiente/prisma.js teste db push --force-reset --skip-generate",
     "test:guardas": "node --test \"scripts/**/*.test.js\"",
+    "test:integracao": "node --test --test-concurrency=1 \"tests/integracao/**/*.test.js\"",
     "tcc:coleta": "node scripts/tcc/coletarDadosReadOnly.js",
     "backfill:pagamentos": "node scripts/marcarVendasAntigasPagas.js"
   },

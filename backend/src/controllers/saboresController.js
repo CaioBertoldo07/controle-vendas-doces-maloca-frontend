@@ -119,7 +119,9 @@ export const deletarSabor = async (req, res) => {
 
     const sabor = await prisma.sabor.findUnique({
       where: { id: parseInt(id) },
-      include: { _count: { select: { vendaSabores: true } } },
+      include: {
+        _count: { select: { vendaSabores: true, ajustesEstoque: true } },
+      },
     });
 
     if (!sabor) return res.status(404).json({ error: "Sabor não encontrado" });
@@ -131,6 +133,20 @@ export const deletarSabor = async (req, res) => {
       });
       return res.json({
         message: "Sabor desativado pois possui vendas vinculadas",
+        sabor: atualizado,
+        desativado: true,
+      });
+    }
+
+    // Ajustes de estoque são histórico de auditoria: o sabor é desativado,
+    // nunca apagado, para preservar os registros.
+    if (sabor._count.ajustesEstoque > 0) {
+      const atualizado = await prisma.sabor.update({
+        where: { id: parseInt(id) },
+        data: { ativo: false },
+      });
+      return res.json({
+        message: "Sabor desativado pois possui ajustes de estoque vinculados",
         sabor: atualizado,
         desativado: true,
       });

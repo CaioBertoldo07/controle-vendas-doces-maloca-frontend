@@ -407,19 +407,35 @@ export const resumoProducao = async (req, res) => {
         (vendidoPorSaborCumulativo[nome] || 0) + vs.quantidade;
     });
 
+    // Ajustes de estoque (contagem física) cumulativos
+    const ajustesCumulativos = await prisma.ajusteEstoque.findMany({
+      where: { data: { lte: endDate } },
+      include: { sabor: true },
+    });
+
+    const ajustadoPorSaborCumulativo = {};
+    ajustesCumulativos.forEach((a) => {
+      const nome = a.sabor.nome;
+      ajustadoPorSaborCumulativo[nome] =
+        (ajustadoPorSaborCumulativo[nome] || 0) + a.diferenca;
+    });
+
     const todosSaboresCumulativo = new Set([
       ...Object.keys(porSaborCumulativo),
       ...Object.keys(vendidoPorSaborCumulativo),
+      ...Object.keys(ajustadoPorSaborCumulativo),
     ]);
 
     const saldoPorSaborCumulativo = {};
     todosSaboresCumulativo.forEach((nome) => {
       const produzido = porSaborCumulativo[nome] || 0;
       const vendido = vendidoPorSaborCumulativo[nome] || 0;
+      const ajustado = ajustadoPorSaborCumulativo[nome] || 0;
       saldoPorSaborCumulativo[nome] = {
         produzido,
         vendido,
-        saldo: produzido - vendido,
+        ajustado,
+        saldo: produzido - vendido + ajustado,
       };
     });
 
